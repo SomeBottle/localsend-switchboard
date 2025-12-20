@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/somebottle/localsend-switchboard/constants"
-	"github.com/somebottle/localsend-switchboard/entities"
-	"github.com/somebottle/localsend-switchboard/services"
-	"github.com/somebottle/localsend-switchboard/utils"
+	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/entities"
+	"github.com/somebottle/localsend-switch/services"
+	"github.com/somebottle/localsend-switch/utils"
 )
 
 func main() {
@@ -21,10 +21,14 @@ func main() {
 	// ------------ 先读取配置
 	multicastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR")
 	multicastPort := os.Getenv("LOCALSEND_MULTICAST_PORT")
+	peerAddr := os.Getenv("LOCALSEND_SWITCH_PEER_ADDR")
+	peerPort := os.Getenv("LOCALSEND_SWITCH_PEER_PORT")
 
 	// 尝试从命令行读取配置
-	flag.StringVar(&multicastAddr, "addr", multicastAddr, "Multicast address")
-	flag.StringVar(&multicastPort, "port", multicastPort, "Multicast port")
+	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")
+	flag.StringVar(&peerPort, "peer-port", peerPort, "Peer port")
+	flag.StringVar(&multicastAddr, "ls-addr", multicastAddr, "Multicast address")
+	flag.StringVar(&multicastPort, "ls-port", multicastPort, "Multicast port")
 
 	flag.Parse()
 
@@ -75,12 +79,17 @@ func main() {
 
 	// 数据传输通道
 	udpPacketChan := make(chan entities.UDPPacketData)
+	// 出现异常时的通知通道
+	errChan := make(chan error)
 	// ------------ 加入组播组，接收 LocalSend 的发现 UDP 包
-	go services.ListenLocalSendMulticast(network, multicastAddr, multicastPort, outBoundInterface, sigCtx, udpPacketChan)
+	// 相关协议文档: https://github.com/localsend/protocol
+	go services.ListenLocalSendMulticast(network, multicastAddr, multicastPort, outBoundInterface, sigCtx, udpPacketChan, errChan)
 
 	// 测试接收数据
 	for {
 		select {
+		case err := <-errChan:
+			panic(fmt.Sprintf("Exited with error: %v\n", err))
 		case <-sigCtx.Done():
 			fmt.Println("Shutting down gracefully...")
 			return
