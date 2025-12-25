@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/somebottle/localsend-switch/constants"
@@ -64,7 +63,6 @@ func ListenLocalSendMulticast(networkType string, multicastAddr string, multicas
 			}
 			// 通知协程停止的通道
 			listenerDone := make(chan struct{})
-			var closeFlag atomic.Bool
 			// ------------ 资源释放
 			defer func() {
 				close(listenerDone)
@@ -75,7 +73,6 @@ func ListenLocalSendMulticast(networkType string, multicastAddr string, multicas
 				select {
 				case <-sigCtx.Done():
 					// 接到退出信号，关闭连接，终止服务
-					closeFlag.Store(true)
 					packetConn.Close()
 				case <-listenerDone:
 					// 退出协程
@@ -97,8 +94,8 @@ func ListenLocalSendMulticast(networkType string, multicastAddr string, multicas
 						// 读取超时罢了，继续等待
 						continue
 					}
-					// 如果是关闭标志被设置，则退出
-					if closeFlag.Load() {
+					// 如果是被中断，退出
+					if sigCtx.Err() != nil {
 						fmt.Printf("Multicast listener exiting gracefully...\n")
 						return true, nil
 					}

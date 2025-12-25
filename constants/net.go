@@ -14,8 +14,10 @@ const (
 	MulticastListenRetryInterval = 3 // 秒
 	// TCP 最大连接数
 	MaxTCPConnections = 255 * 255
-	// TCP 心跳时间
-	TCPHeartbeatInterval = 15 // 秒
+	// TCP 连接等待超时时间
+	TCPAcceptTimeout = 30 // 秒
+	// TCP 连接心跳间隔时间
+	TCPConnHeartbeatInterval = 15 // 秒
 	// TCP 服务重启间隔时间
 	TCPServerRestartInterval = 3 // 秒
 	// 读取 TCP 数据时字节缓冲区大小

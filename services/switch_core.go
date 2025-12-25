@@ -17,16 +17,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// handleTCP 处理单个 TCP 连接
+// handleTCPConnection 处理单个 TCP 连接
 //
 // conn: TCP 连接
 // dataChan: 传递接收到的交换数据的通道
 // connectionVolume: 控制最大连接数的通道
 // sigCtx: 中断信号上下文，用于优雅关闭连接
-func handleTCP(conn *net.TCPConn, dataChan chan<- *switchdata.ClientInfo, connectionVolume chan struct{}, sigCtx context.Context) {
+func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMessage, connectionVolume chan struct{}, sigCtx context.Context) {
 	// 用来向中断信号监听协程发送退出信号的管道
 	handlerDone := make(chan struct{})
-	// 处理完成后的清理
+	// 本处理协程终止后的清理
 	defer func() {
 		close(handlerDone)
 		<-connectionVolume
@@ -44,12 +44,12 @@ func handleTCP(conn *net.TCPConn, dataChan chan<- *switchdata.ClientInfo, connec
 	}()
 	// 设置连接的一些传输层属性
 	conn.SetKeepAlive(true)
-	conn.SetKeepAlivePeriod(constants.TCPHeartbeatInterval * time.Second)
+	conn.SetKeepAlivePeriod(constants.TCPConnHeartbeatInterval * time.Second)
 	// 接收数据
 	buf := make([]byte, constants.TCPSocketReadBufferSize)
 	for {
 		// 设置读取超时，超过心跳时间没有数据就断开连接
-		conn.SetReadDeadline(time.Now().Add(constants.TCPHeartbeatInterval * time.Second))
+		conn.SetReadDeadline(time.Now().Add(constants.TCPConnHeartbeatInterval * time.Second))
 		// 每组数据传输格式: [ 1 字节的数据类型 | 4 字节的大端数据长度 | 数据 ]
 
 		// 1 字节的数据类型
@@ -91,7 +91,10 @@ func handleTCP(conn *net.TCPConn, dataChan chan<- *switchdata.ClientInfo, connec
 				return
 			}
 			// 发送数据到通道
-			dataChan <- clientInfo
+			dataChan <- &entities.SwitchMessage{
+				SourceAddr: conn.RemoteAddr().String(),
+				Payload:    clientInfo,
+			}
 		default:
 			// 未知的数据类型，也是直接丢弃连接
 			fmt.Printf("Unknown data type received over TCP: 0x%02X, closing connection\n", dataType)
@@ -100,13 +103,13 @@ func handleTCP(conn *net.TCPConn, dataChan chan<- *switchdata.ClientInfo, connec
 	}
 }
 
-// receiveSwitchDataThroughTCP 通过 TCP 接收来自其他节点的交换数据
+// setupTCPServer 通过 TCP 接收来自其他节点的交换数据
 //
 // servPort: 监听的服务端口
 // dataChan: 传递接收到的交换数据的通道
 // errChan: 传递错误信息的通道
 // sigCtx: 中断信号上下文，用于优雅关闭服务
-func receiveSwitchDataThroughTCP(servPort string, dataChan chan<- *switchdata.ClientInfo, errChan chan<- error, sigCtx context.Context) {
+func setupTCPServer(servPort string, dataChan chan<- *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
 	for {
 		// 端口转整数
 		port, err := strconv.Atoi(servPort)
@@ -124,23 +127,43 @@ func receiveSwitchDataThroughTCP(servPort string, dataChan chan<- *switchdata.Cl
 			if err != nil {
 				return true, err
 			}
-			defer tcpListener.Close()
+			// 用于通知中断监听协程退出的管道
+			listenerDone := make(chan struct{})
+			// 资源释放
+			defer func() {
+				close(listenerDone)
+				tcpListener.Close()
+			}()
+			// 中断信号监听协程
+			go func() {
+				for {
+					select {
+					case <-sigCtx.Done():
+						// 接到退出信号，关闭监听器，终止服务
+						tcpListener.Close()
+						return
+					case <-listenerDone:
+						// 退出协程
+						return
+					}
+				}
+			}()
 			fmt.Printf("TCP Server listening on port %s\n", servPort)
 			// 接受连接
 			for {
-				select {
-				case <-sigCtx.Done():
-					return true, nil
-				default:
-					conn, err := tcpListener.AcceptTCP()
-					connectionVolume <- struct{}{}
-					if err != nil {
-						<-connectionVolume
-						continue
+				tcpListener.SetDeadline(time.Now().Add(constants.TCPAcceptTimeout * time.Second))
+				conn, err := tcpListener.AcceptTCP()
+				if err != nil {
+					if sigCtx.Err() != nil {
+						// 收到中断信号，优雅退出
+						fmt.Printf("TCP Server exiting gracefully...\n")
+						return true, nil
 					}
-					// 处理连接
-					go handleTCP(conn, dataChan, connectionVolume, sigCtx)
+					continue
 				}
+				connectionVolume <- struct{}{}
+				// 处理连接
+				go handleTCPConnection(conn, dataChan, connectionVolume, sigCtx)
 			}
 		}()
 		if exit {
@@ -158,8 +181,8 @@ func receiveSwitchDataThroughTCP(servPort string, dataChan chan<- *switchdata.Cl
 
 // SetUpSwitchCore 设置并启动交换服务核心模块
 func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx context.Context, udpPacketChan <-chan entities.UDPPacketData, errChan chan<- error) {
-	switchDataChan := make(chan *switchdata.ClientInfo, constants.SwitchDataReceiveChanSize)
+	switchDataChan := make(chan *entities.SwitchMessage, constants.SwitchDataReceiveChanSize)
 
 	// 启动 TCP 服务以接收交换数据
-	go receiveSwitchDataThroughTCP(servPort, switchDataChan, errChan, sigCtx)
+	go setupTCPServer(servPort, switchDataChan, errChan, sigCtx)
 }

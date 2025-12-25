@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 )
 
 // PacketConn 封装了 IPv4 和 IPv6 的数据包连接，包括有 ReadFrom 和 Close 方法
@@ -57,4 +58,10 @@ func (pc *PacketConn) Close() error {
 		}
 	}
 	return nil
+}
+
+// SwitchMessage 包装了连接要递交的交换数据
+type SwitchMessage struct {
+	SourceAddr string
+	Payload   *switchdata.ClientInfo
 }
