@@ -99,10 +99,10 @@ func main() {
 	// ------------ 加入组播组，接收 LocalSend 的发现 UDP 包
 	// 相关协议文档: https://github.com/localsend/protocol
 	// 本地组播数据转交通道
-	multicastChan := make(chan *entities.SwitchMessage)
+	multicastChan := make(chan *entities.SwitchMessage, constants.MulticastChanSize)
 	// 出现严重异常时的通知通道
 	errChan := make(chan error)
-	go services.ListenLocalSendMulticast(selfIp, nodeId, network, multicastAddr, multicastPort, outBoundInterface, sigCtx, multicastChan, errChan)
+	go services.ListenLocalSendMulticast(nodeId, network, multicastAddr, multicastPort, outBoundInterface, sigCtx, multicastChan, errChan)
 
 	// 测试接收数据
 	for {

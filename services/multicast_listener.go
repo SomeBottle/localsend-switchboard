@@ -9,6 +9,7 @@ import (
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
+	"github.com/somebottle/localsend-switch/utils"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -16,7 +17,6 @@ import (
 
 // ListenLocalSendMulticast 启动 LocalSend 组播消息监听
 //
-// selfIp: 本节点的 IP 地址，用来忽略不是自己的组播消息
 // nodeId: 本节点的唯一标识符
 // networkType: "udp4" 或 "udp6"
 // multicastAddr: 组播地址
@@ -25,9 +25,15 @@ import (
 // sigCtx: 中断信号上下文，用于优雅关闭监听
 // chanMsg: 传递接收到的组播消息的通道
 // errChan: 传递异常的通道，一旦传递，进程即将退出
-func ListenLocalSendMulticast(selfIp net.IP, nodeId string, networkType string, multicastAddr string, multicastPort string, outboundInterface *net.Interface, sigCtx context.Context, chanMsg chan<- *entities.SwitchMessage, errChan chan<- error) {
+func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr string, multicastPort string, outboundInterface *net.Interface, sigCtx context.Context, chanMsg chan<- *entities.SwitchMessage, errChan chan<- error) {
 	// 维护一个序号，为每个发现消息分配唯一序号
 	var discoverySeq uint64
+	// 获得本机的首选出站 IP 地址，用于过滤掉自己发送的组播消息
+	selfIp, err := utils.GetOutboundIP()
+	if err != nil {
+		errChan <- fmt.Errorf("Error getting outbound IP address: %w", err)
+		return
+	}
 	// for 循环保持连接
 	for {
 		exit, err := func() (bool, error) {
@@ -127,7 +133,7 @@ func ListenLocalSendMulticast(selfIp net.IP, nodeId string, networkType string, 
 				discoverySeq++
 				// 包装成 SwitchMessage
 				switchMsg := &entities.SwitchMessage{
-					SourceAddr: remoteAddr.String(),
+					SourceAddr: remoteAddr,
 					Payload:    &discoveryMsg,
 				}
 				chanMsg <- switchMsg

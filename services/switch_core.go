@@ -93,7 +93,7 @@ func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMess
 			}
 			// 发送数据到通道
 			dataChan <- &entities.SwitchMessage{
-				SourceAddr: conn.RemoteAddr().String(),
+				SourceAddr: conn.RemoteAddr(),
 				Payload:    DiscoveryMessage,
 			}
 		default:
@@ -194,10 +194,10 @@ func setupTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, errChan chan<- error) {
 	// 通过 TCP 传输的交换数据通道
 	switchDataChan := make(chan *entities.SwitchMessage, constants.SwitchDataReceiveChanSize)
-	// 维护 TCP 连接
+	// 维护 TCP 连接的管理器
 	var tcpConnHub *TCPConnectionHub = NewTCPConnectionHub()
 
 	// 启动 TCP 服务以接收另一端传输过来的交换数据
 	go setupTCPServer(servPort, tcpConnHub, switchDataChan, errChan, sigCtx)
-
+	
 }

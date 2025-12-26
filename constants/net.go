@@ -10,6 +10,8 @@ const (
 	MulticastReadBufferSize = 65536 // 64 KiB
 	// 组播数据读取超时时间
 	MulticastReadTimeout = 15 // 秒
+	// 组播数据通道缓冲区大小
+	MulticastChanSize = 128
 	// 重试监听组播的间隔时间
 	MulticastListenRetryInterval = 3 // 秒
 	// TCP 最大连接数
