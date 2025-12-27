@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,16 +15,17 @@ import (
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
+	"github.com/somebottle/localsend-switch/utils"
 	"google.golang.org/protobuf/proto"
 )
 
-// handleTCPConnection 处理并维护单个 TCP 连接
+// handleTCPConnectionRecv 处理并维护单个 TCP 连接的接收部分
 //
 // conn: TCP 连接
-// dataChan: 传递接收到的交换数据的通道
+// recvDataChan: 传递接收到的交换数据的通道
 // tcpConnHub: 维护 TCP 连接的管理器
 // sigCtx: 中断信号上下文，用于优雅关闭连接
-func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMessage, tcpConnHub *TCPConnectionHub, sigCtx context.Context) {
+func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.SwitchMessage, tcpConnHub *TCPConnectionHub, sigCtx context.Context) {
 	// 用来向中断信号监听协程发送退出信号的管道
 	handlerDone := make(chan struct{})
 	// 本处理协程终止后的清理
@@ -39,7 +41,7 @@ func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMess
 		case <-sigCtx.Done():
 			conn.Close()
 		case <-handlerDone:
-			// handleTCP 协程退出，这里也顺带退出
+			// handleTCPConnectionRecv 协程退出，这里也顺带退出
 			return
 		}
 	}()
@@ -92,7 +94,7 @@ func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMess
 				return
 			}
 			// 发送数据到通道
-			dataChan <- &entities.SwitchMessage{
+			recvDataChan <- &entities.SwitchMessage{
 				SourceAddr: conn.RemoteAddr(),
 				Payload:    DiscoveryMessage,
 			}
@@ -104,14 +106,201 @@ func handleTCPConnection(conn *net.TCPConn, dataChan chan<- *entities.SwitchMess
 	}
 }
 
-// setupTCPServer 通过 TCP 接收来自其他节点的交换数据
+// handleTCPConnectionSend 处理并维护单个 TCP 连接的发送部分
+//
+// conn: TCP 连接
+// sendDataChan: 传递要发送的交换数据的通道
+// tcpConnHub: 维护 TCP 连接的管理器
+// sigCtx: 中断信号上下文，用于优雅关闭连接
+func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.SwitchMessage, sigCtx context.Context) {
+	// 用于定时发心跳包的定时器
+	heartbeatTicker := time.NewTicker(constants.TCPConnHeartbeatSendInterval * time.Second)
+	defer heartbeatTicker.Stop()
+	// 设置连接的一些传输层属性
+	conn.SetKeepAlive(true)
+	conn.SetKeepAlivePeriod(constants.TCPConnHeartbeatInterval * time.Second)
+	// 发送数据
+	for {
+		select {
+		case <-sigCtx.Done():
+			// 收到退出信号
+			return
+		case msg, ok := <-sendDataChan:
+			if !ok {
+				// 通道关闭，退出
+				return
+			}
+			// 把数据序列化
+			payload, err := proto.Marshal(msg.Payload)
+			if err != nil {
+				// 序列化失败，忽略该数据
+				fmt.Printf("Failed to marshal switch message %s for sending over TCP: %v\n", msg.Payload, err)
+				continue
+			}
+			// 设置写入超时时间
+			conn.SetWriteDeadline(time.Now().Add(constants.TCPSocketWriteTimeout * time.Second))
+
+			// 发送数据格式: [ 1 字节的数据类型 | 4 字节的大端数据长度 | 数据 ]
+
+			// 1 字节的数据类型
+			var dataType byte = 0x01 // DiscoveryMessage 数据
+			if err := binary.Write(conn, binary.BigEndian, dataType); err != nil {
+				if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+					// 连接已关闭，退出协程
+					return
+				}
+				// 发送类型失败，可能是连接出错
+				fmt.Printf("Failed to send data type over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				continue
+			}
+			// 4 字节的大端数据长度
+			dataLength := uint32(len(payload))
+			if err := binary.Write(conn, binary.BigEndian, dataLength); err != nil {
+				// 发送长度失败，可能是连接出错
+				fmt.Printf("Failed to send data length over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				continue
+			}
+			// 发送数据
+			if err := utils.WriteAll(conn, payload); err != nil {
+				// 发送数据失败，可能是连接出错
+				fmt.Printf("Failed to send data over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				continue
+			}
+		case <-heartbeatTicker.C:
+			// 发送心跳包
+			conn.SetWriteDeadline(time.Now().Add(constants.TCPSocketWriteTimeout * time.Second))
+			var heartbeatByte byte = 0x02
+			if err := binary.Write(conn, binary.BigEndian, heartbeatByte); err != nil {
+				if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+					// 连接已关闭，退出协程
+					return
+				}
+				// 发送心跳包失败，可能是连接出错
+				fmt.Printf("Failed to send heartbeat over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				continue
+			}
+		}
+	}
+}
+
+// handleTCPConnection 处理并维护单个 TCP 连接
+//
+// conn: TCP 连接
+// sendDataChan: 传递要发送的交换数据的通道
+// recvDataChan: 传递接收到的交换数据的通道
+// tcpConnHub: 维护 TCP 连接的管理器
+// sigCtx: 中断信号上下文，用于优雅关闭连接
+func handleTCPConnection(conn *net.TCPConn, sendDataChan <-chan *entities.SwitchMessage, recvDataChan chan<- *entities.SwitchMessage, tcpConnHub *TCPConnectionHub, sigCtx context.Context) {
+	// 启动接收协程
+	go handleTCPConnectionRecv(conn, recvDataChan, tcpConnHub, sigCtx)
+	// 启动发送协程
+	handleTCPConnectionSend(conn, sendDataChan, sigCtx)
+}
+
+// connectPeer 连接到另一个 switch 节点并维护该连接
+//
+// peerAddr: 另一个 switch 节点的地址
+// peerPort: 另一个 switch 节点的端口
+// tcpConnHub: 维护 TCP 连接的管理器
+// switchDataChan: 传递交换数据的通道
+// errChan: 错误通道，用于传递运行时错误
+// sigCtx: 中断信号上下文，用于优雅关闭协程
+func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub, switchDataChan chan *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
+	// 没有配置 peerAddr 或 peerPort 则不启动转发协程
+	if peerAddr == "" || peerPort == "" {
+		fmt.Println("Peer address or port not provided, switch forwarder will not be started.")
+		return
+	}
+	// 建立 TCP 连接重试计数器
+	var retryCount int
+	port, err := strconv.Atoi(peerPort)
+	if err != nil {
+		errChan <- fmt.Errorf("Invalid peer port: %v", err)
+		return
+	}
+	for {
+		exit, err := func() (bool, error) {
+			// 和另一个 switch 端建立 TCP 连接
+			conn, tcpErr := net.DialTCP("tcp", nil, &net.TCPAddr{
+				IP:   net.ParseIP(peerAddr),
+				Port: port,
+			})
+			if tcpErr != nil {
+				return false, tcpErr
+			}
+			// 用于通知中断监听协程退出的管道
+			connDone := make(chan struct{})
+			// 资源释放
+			defer func() {
+				close(connDone)
+				conn.Close()
+			}()
+			// 中断信号监听协程
+			go func() {
+				for {
+					select {
+					case <-sigCtx.Done():
+						// 接到退出信号
+						conn.Close()
+						return
+					case <-connDone:
+						// 退出协程
+						return
+					}
+				}
+			}()
+			// 成功建立连接，重试计数重置
+			retryCount = 0
+			// 添加连接到管理器
+			sendChan, err := tcpConnHub.AddConnection(conn)
+			if err != nil {
+				// 添加失败，说明连接已存在或者超过最大连接数，这种情况下退出
+				fmt.Printf("Failed to create TCP connection to peer switch at %s:%s: %v\n", peerAddr, peerPort, err)
+				return true, nil
+			}
+			fmt.Printf("Established TCP connection to peer switch at %s:%s\n", peerAddr, peerPort)
+			// 处理并维持连接
+			handleTCPConnection(conn, sendChan, switchDataChan, tcpConnHub, sigCtx)
+			if sigCtx.Err() != nil {
+				// 收到退出信号，优雅退出
+				fmt.Printf("Peer connection to %s:%s exiting gracefully...\n", peerAddr, peerPort)
+				return true, nil
+			}
+			// 连接意外断开，继续重试
+			return false, nil
+		}()
+		if exit {
+			// 收到退出信号，终止协程
+			if err != nil {
+				errChan <- err
+			}
+			return
+		}
+		// 意外退出，继续重试
+		retryCount++
+		if retryCount > constants.SwitchPeerConnectMaxRetries {
+			// 重试次数过多
+			errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", constants.SwitchPeerConnectMaxRetries, peerAddr, peerPort)
+			return
+		}
+		fmt.Printf("Retrying to connect to peer switch at %s:%s in %d seconds... (retry %d/%d)\n", peerAddr, peerPort, constants.SwitchPeerConnectRetryInterval, retryCount, constants.SwitchPeerConnectMaxRetries)
+		time.Sleep(constants.SwitchPeerConnectRetryInterval * time.Second)
+	}
+}
+
+// setUpTCPServer 通过 TCP 接收来自其他节点的交换数据
 //
 // servPort: 监听的服务端口
 // tcpConnHub: 维护 TCP 连接的管理器
 // dataChan: 传递接收到的交换数据的通道
 // errChan: 传递错误信息的通道
 // sigCtx: 中断信号上下文，用于优雅关闭服务
-func setupTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan<- *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
+func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan<- *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
+	if servPort == "" {
+		// 未配置服务端口，不启动 TCP 服务
+		fmt.Println("Service port not provided, TCP server will not be started.")
+		return
+	}
 	for {
 		// 端口转整数
 		port, err := strconv.Atoi(servPort)
@@ -121,11 +310,11 @@ func setupTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 		}
 		exit, err := func() (bool, error) {
 			// 启动 TCP 服务
-			tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{
+			tcpListener, tcpErr := net.ListenTCP("tcp", &net.TCPAddr{
 				Port: port,
 			})
-			if err != nil {
-				return true, err
+			if tcpErr != nil {
+				return true, tcpErr
 			}
 			// 用于通知中断监听协程退出的管道
 			listenerDone := make(chan struct{})
@@ -161,20 +350,16 @@ func setupTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 					}
 					continue
 				}
-				// 如果超过最大连接数，拒绝连接
-				if tcpConnHub.NumConnections() >= constants.MaxTCPConnections {
-					fmt.Printf("Maximum TCP connections reached (%d), rejecting new connection from %s\n", constants.MaxTCPConnections, conn.RemoteAddr().String())
-					conn.Close()
-					continue
-				}
 				// 添加连接到管理器
-				if err := tcpConnHub.AddConnection(conn); err != nil {
-					// 添加失败，说明连接已存在
+				sendChan, err := tcpConnHub.AddConnection(conn)
+				if err != nil {
+					// 添加失败，说明连接已存在或者超过最大连接数
+					fmt.Printf("Failed to add TCP connection from %s: %v\n", conn.RemoteAddr().String(), err)
 					conn.Close()
 					continue
 				}
 				// 处理连接
-				go handleTCPConnection(conn, dataChan, tcpConnHub, sigCtx)
+				go handleTCPConnection(conn, sendChan, dataChan, tcpConnHub, sigCtx)
 			}
 		}()
 		if exit {

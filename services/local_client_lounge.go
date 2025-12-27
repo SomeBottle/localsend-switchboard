@@ -67,8 +67,10 @@ func(lcl *LocalClientLounge) Add(info *entities.LocalSendClientInfo) {
 	}
 }
 
-// Get 获取所有现有本地客户端信息，以通道形式返回
-func (lcl *LocalClientLounge) Get() <-chan *entities.LocalSendClientInfo {
+// SyncGet 获取所有现有本地客户端信息，以通道形式返回
+//
+// 注：在读取完毕前会锁住等候室，防止并发修改，因为本地客户端其实往往只有 1 个，这通常不会是很大问题
+func (lcl *LocalClientLounge) SyncGet() <-chan *entities.LocalSendClientInfo {
 	outChan := make(chan *entities.LocalSendClientInfo)
 	go func(){
 		lcl.mutex.Lock()

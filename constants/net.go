@@ -20,6 +20,8 @@ const (
 	TCPAcceptTimeout = 30 // 秒
 	// TCP 连接心跳间隔时间
 	TCPConnHeartbeatInterval = 15 // 秒
+	// TCP 连接心跳发送间隔时间
+	TCPConnHeartbeatSendInterval = 8 // 秒
 	// TCP 服务重启间隔时间
 	TCPServerRestartInterval = 3 // 秒
 	// 读取 TCP 数据时字节缓冲区大小
@@ -28,4 +30,12 @@ const (
 	SwitchDataReceiveChanSize = 128
 	// 发现信息最大跳数
 	MaxDiscoveryMessageTTL = 255
+	// 和对端 switch 建立 TCP 连接的重试间隔
+	SwitchPeerConnectRetryInterval = 3 // 秒
+	// 和对端 switch 建立 TCP 连接的最大重试次数
+	SwitchPeerConnectMaxRetries = 10
+	// TCP 发送通道缓冲区大小
+	TCPSocketSendChanSize = 32
+	// 写入 TCP 数据的超时时间
+	TCPSocketWriteTimeout = 3 // 秒
 )

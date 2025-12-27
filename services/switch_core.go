@@ -11,6 +11,31 @@ import (
 	"github.com/somebottle/localsend-switch/utils"
 )
 
+// setUpForwarder 启动交换数据转发器
+// 
+// SwitchLounge: 交换数据等候室
+func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, errChan chan<- error, sigCtx context.Context) {
+	for{
+		select {
+		case <-sigCtx.Done():
+			// 收到退出信号
+			return
+		case switchMsg, ok := <-SwitchLounge.Read():
+			if !ok {
+				// 等候室关闭，退出
+				return
+			}
+			// 对于每个交换信息，转发给所有连接的节点 (除开其来源节点)
+			for _,cwc := range tcpConnHub.GetConnectionsExcept(switchMsg.SourceAddr) {
+				// 把交换信息发送到对应的发送通道
+				cwc.SendChan<-switchMsg
+			}
+			// TODO: 新建另外一个 HTTP 请求发送协程，通过通道发送要发起的 HTTP 请求.
+		}
+	}
+}
+
+
 // SetUpSwitchCore 设置并启动交换服务核心模块
 func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, errChan chan<- error) {
 	// 通过 TCP 传输的交换数据通道
@@ -22,14 +47,16 @@ func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx c
 	// 维护本地客户端信息的等候室
 	var localClientLounge *LocalClientLounge = NewLocalClientLounge()
 	// 清理
-	defer func(){
+	defer func() {
 		localClientLounge.Close()
 		switchLounge.Close()
 		tcpConnHub.Close()
 	}()
 
 	// 启动 TCP 服务以接收另一端传输过来的交换数据
-	go setupTCPServer(servPort, tcpConnHub, switchDataChan, errChan, sigCtx)
+	go setUpTCPServer(servPort, tcpConnHub, switchDataChan, errChan, sigCtx)
+	// 连接到另一个 switch 节点
+	go connectPeer(peerAddr, peerPort, tcpConnHub, switchDataChan, errChan, sigCtx)
 
 	// 把接收到的交换数据写入等候室
 	for {

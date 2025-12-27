@@ -54,7 +54,7 @@ type SwitchLounge struct {
 	// heap, map 更新锁
 	mutex sync.Mutex
 	// 存储已经转发了的发现信息 ID，防止传播路径有环，重复转发
-	relayedIds map[string]bool
+	forwardedIds map[string]bool
 	// 关闭信号，让相应协程退出
 	closeSignal chan struct{}
 	// 标记是否关闭
@@ -72,7 +72,7 @@ func NewSwitchLounge() *SwitchLounge {
 	heap.Init(ttlHeap)
 	switchLounge := SwitchLounge{
 		closeSignal: make(chan struct{}),
-		relayedIds:  make(map[string]bool),
+		forwardedIds:  make(map[string]bool),
 		ttlHeap:     ttlHeap,
 		lounge:      make(chan *entities.SwitchMessage, constants.SWITCH_LOUNGE_SIZE),
 	}
@@ -100,7 +100,7 @@ func NewSwitchLounge() *SwitchLounge {
 					}
 					heap.Pop(ttlHeap)
 					// 删除 ID 记录
-					delete(switchLounge.relayedIds, item.id)
+					delete(switchLounge.forwardedIds, item.id)
 				}
 				switchLounge.mutex.Unlock()
 			}
@@ -121,12 +121,12 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 		return errors.New("Switch lounge is closed")
 	}
 	// 检查是否已经转发过该发现包
-	if _, exists := sl.relayedIds[discoveryId]; exists {
+	if _, exists := sl.forwardedIds[discoveryId]; exists {
 		// 已经转发过，忽略
 		return nil
 	}
 	// 如果条目过多，放弃写入
-	if len(sl.relayedIds) >= constants.SWITCH_ID_CACHE_MAX_ENTRIES {
+	if len(sl.forwardedIds) >= constants.SWITCH_ID_CACHE_MAX_ENTRIES {
 		return errors.New("Switch lounge relayed ID cache is full")
 	}
 
@@ -134,7 +134,7 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 	select {
 	case sl.lounge <- msg:
 		// 记录该发现包 ID，防止重复转发
-		sl.relayedIds[discoveryId] = true
+		sl.forwardedIds[discoveryId] = true
 		// 加入堆中
 		heap.Push(sl.ttlHeap, &TTLHeapItem{
 			id:        discoveryId,
