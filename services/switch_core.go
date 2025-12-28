@@ -4,7 +4,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
@@ -12,10 +14,29 @@ import (
 )
 
 // setUpForwarder 启动交换数据转发器
-// 
+//
 // SwitchLounge: 交换数据等候室
-func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, errChan chan<- error, sigCtx context.Context) {
-	for{
+// localClientLounge: 本地客户端信息等候室
+// tcpConnHub: TCP 连接管理器
+// httpRequestChan: HTTP 请求发送通道
+// errChan: 致命错误通道
+// sigCtx: 中断信号上下文
+func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, httpRequestChan chan<- *entities.HTTPJsonPostRequest, errChan chan<- error, sigCtx context.Context) {
+	// 构建 HTTP 请求对象
+	makeHTTPRequest := func(ip net.IP, port uint16, protocol string, jsonBody []byte) *entities.HTTPJsonPostRequest {
+		return &entities.HTTPJsonPostRequest{
+			URL:      fmt.Sprintf("%s://%s:%d/api/localsend/v2/register", protocol, ip.String(), port),
+			JsonBody: jsonBody,
+			RespChan: nil, // 不需要响应
+		}
+	}
+	// 获得本机 IP 以判断包是不是自己发出的
+	selfIp, err := utils.GetOutboundIP()
+	if err != nil {
+		errChan <- fmt.Errorf("Error getting outbound IP address in forwarder: %w", err)
+		return
+	}
+	for {
 		select {
 		case <-sigCtx.Done():
 			// 收到退出信号
@@ -26,15 +47,79 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 				return
 			}
 			// 对于每个交换信息，转发给所有连接的节点 (除开其来源节点)
-			for _,cwc := range tcpConnHub.GetConnectionsExcept(switchMsg.SourceAddr) {
+			for _, cwc := range tcpConnHub.GetConnectionsExcept(switchMsg.SourceAddr) {
+				// 交换信息 TTL 减一
+				switchMsg.Payload.DiscoveryTtl--
+				// 如果 TTL 已经为 0，则不再转发，丢弃
+				if switchMsg.Payload.DiscoveryTtl <= 0 {
+					continue
+				}
+				fmt.Printf("[DEBUG] Forwarding switch message %+v to %s\n", switchMsg, cwc.Conn.RemoteAddr().String())
 				// 把交换信息发送到对应的发送通道
-				cwc.SendChan<-switchMsg
+				cwc.SendChan <- switchMsg
 			}
-			// TODO: 新建另外一个 HTTP 请求发送协程，通过通道发送要发起的 HTTP 请求.
+
+			var remoteIP net.IP
+			switch addr := switchMsg.SourceAddr.(type) {
+			case *net.TCPAddr:
+				remoteIP = addr.IP
+			case *net.UDPAddr:
+				remoteIP = addr.IP
+			default:
+				fmt.Println("Warning: unknown net.Addr type in switch message source address")
+				continue
+			}
+			// 每个交换信息，只要其来源不是本机，就同时对其来源和本机 LocalSend 客户端发送注册请求
+			// 对其来源: 发送本机的 LocalSend 客户端信息
+			// 对本机 LocalSend 客户端: 发送来源想要交换的信息
+			if !remoteIP.Equal(selfIp) {
+				fmt.Printf("[DEBUG] Received non-local client info: %+v\n", switchMsg.Payload)
+				// 转换为 LocalSend 客户端信息
+				remoteClientInfo, err := utils.SwitchMessageToLocalSendClientInfo(switchMsg)
+				if err != nil {
+					fmt.Printf("Warning: failed to convert switch message to local client info for HTTP request: %v\n", err)
+					continue
+				}
+				// 序列化为 JSON
+				remoteJsonPayload, err := json.Marshal(remoteClientInfo)
+				if err != nil {
+					fmt.Printf("Warning: failed to serialize switch message payload to JSON for HTTP request: %v\n", err)
+					continue
+				}
+
+				// 远端和本机的每一个 LocalSend 客户端都要进行信息交换
+				for localClientInfo := range localClientLounge.SyncGet() {
+					// 序列化为 JSON
+					localJsonPayload, err := json.Marshal(localClientInfo)
+					if err != nil {
+						fmt.Printf("Warning: failed to serialize local client info to JSON for HTTP request: %v\n", err)
+						continue
+					}
+					// 在本地客户端注册远端客户端信息
+					localHttpReq := makeHTTPRequest(selfIp, localClientInfo.Port, localClientInfo.Protocol, remoteJsonPayload)
+					fmt.Printf("[DEBUG] Register remote client on %s\n", localHttpReq.URL)
+					// 发送 HTTP 请求
+					select {
+					case httpRequestChan <- localHttpReq:
+					case <-sigCtx.Done():
+						// 收到退出信号
+						return
+					}
+					// 在远端客户端注册本地客户端信息
+					remoteHttpReq := makeHTTPRequest(remoteIP, remoteClientInfo.Port, remoteClientInfo.Protocol, localJsonPayload)
+					fmt.Printf("[DEBUG] Register local client on %s\n", remoteHttpReq.URL)
+					// 发送 HTTP 请求
+					select {
+					case httpRequestChan <- remoteHttpReq:
+					case <-sigCtx.Done():
+						// 收到退出信号
+						return
+					}
+				}
+			}
 		}
 	}
 }
-
 
 // SetUpSwitchCore 设置并启动交换服务核心模块
 func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, errChan chan<- error) {
@@ -46,6 +131,8 @@ func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx c
 	var switchLounge *SwitchLounge = NewSwitchLounge()
 	// 维护本地客户端信息的等候室
 	var localClientLounge *LocalClientLounge = NewLocalClientLounge()
+	// 用来发送 HTTP 请求的通道
+	httpRequestChan := make(chan *entities.HTTPJsonPostRequest, constants.HTTPClientWorkerCount*2)
 	// 清理
 	defer func() {
 		localClientLounge.Close()
@@ -57,6 +144,12 @@ func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx c
 	go setUpTCPServer(servPort, tcpConnHub, switchDataChan, errChan, sigCtx)
 	// 连接到另一个 switch 节点
 	go connectPeer(peerAddr, peerPort, tcpConnHub, switchDataChan, errChan, sigCtx)
+	// 启动 HTTP 请求发送器 (多个 worker)
+	for range constants.HTTPClientWorkerCount {
+		go setUpHTTPSender(httpRequestChan, sigCtx)
+	}
+	// 启动交换数据转发器
+	go setUpForwarder(switchLounge, localClientLounge, tcpConnHub, httpRequestChan, errChan, sigCtx)
 
 	// 把接收到的交换数据写入等候室
 	for {

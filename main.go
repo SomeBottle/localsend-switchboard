@@ -104,6 +104,9 @@ func main() {
 	errChan := make(chan error)
 	go services.ListenLocalSendMulticast(nodeId, network, multicastAddr, multicastPort, outBoundInterface, sigCtx, multicastChan, errChan)
 
+	// ------------ 启动交换服务核心模块
+	go services.SetUpSwitchCore(peerAddr,peerPort,servPort,sigCtx,multicastChan,errChan)
+
 	// 测试接收数据
 	for {
 		select {
@@ -114,8 +117,8 @@ func main() {
 			// 等待一会儿以确保所有 goroutine 都能退出
 			time.Sleep(2 * time.Second)
 			return
-		case packet := <-multicastChan:
-			fmt.Printf("Received UDP packet from %s - Data: %s\n", packet.SourceAddr, packet.Payload)
+		// case packet := <-multicastChan:
+		// 	fmt.Printf("Received UDP packet from %s - Data: %s\n", packet.SourceAddr, packet.Payload)
 		}
 	}
 

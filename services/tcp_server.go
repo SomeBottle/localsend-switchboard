@@ -360,6 +360,7 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 				}
 				// 处理连接
 				go handleTCPConnection(conn, sendChan, dataChan, tcpConnHub, sigCtx)
+				fmt.Printf("[DEBUG] Accepted TCP connection from %s\n", conn.RemoteAddr().String())
 			}
 		}()
 		if exit {

@@ -59,3 +59,15 @@ func (pc *PacketConn) Close() error {
 	return nil
 }
 
+// HTTPResponse 表示一个 HTTP 响应
+type HTTPResponse struct {
+	StatusCode int
+	Body       []byte
+}
+
+// HTTPJsonPostRequest 表示一个 HTTP POST 请求，传输 JSON 数据
+type HTTPJsonPostRequest struct {
+	URL     string
+	JsonBody []byte
+	RespChan chan *HTTPResponse // 可选的响应通道，用于接收响应数据
+}

@@ -73,7 +73,7 @@ func (hub *TCPConnectionHub) NumConnections() int {
 	return len(hub.conns)
 }
 
-// GetConnections 返回除了 remoteAddr 以外所有 TCP 连接构成的切片
+// GetConnections 返回除了来源为 remoteAddr 以外所有 TCP 连接构成的切片
 //
 // remoteAddr: 要排除的远端连接地址
 func (hub *TCPConnectionHub) GetConnectionsExcept(remoteAddr net.Addr) []ConnWithChan {
@@ -95,7 +95,5 @@ func (hub *TCPConnectionHub) Close() {
 	for _, cwc := range hub.conns {
 		// 连接关闭后，连接 handler 会自动从管理器中移除该连接
 		cwc.Conn.Close()
-		// 关闭发送通道
-		close(cwc.SendChan)
 	}
 }
