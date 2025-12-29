@@ -3,6 +3,7 @@ package utils
 import (
 	"log"
 	"net"
+	"strconv"
 )
 
 // IsIpv6 判断给定的地址是否为 IPv6 地址
@@ -63,4 +64,15 @@ func WriteAllBytes(conn net.Conn, data []byte) error {
 		data = data[n:]
 	}
 	return nil
+}
+
+// ParsePort 将字符串形式的端口号解析为 uint16 类型
+//
+// portStr: 字符串形式的端口号
+func ParsePort(portStr string) (uint16, error) {
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return 0, err
+	}
+	return uint16(port), nil
 }

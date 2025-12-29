@@ -39,7 +39,7 @@ const (
 	// 写入 TCP 数据的超时时间
 	TCPSocketWriteTimeout = 3 // 秒
 	// HTTP 请求超时时间
-	HTTPRequestTimeout = 3 // 秒
+	HTTPRequestTimeout = 2 // 秒
 	// HTTP 响应体最大读取字节数
 	HTTPResponseBodyMaxSize = 1 * 1024 * 1024 // 1 MiB
 	// HTTP 客户端 Worker 数量

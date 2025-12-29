@@ -28,8 +28,6 @@ import (
 // chanMsg: 传递接收到的组播消息的通道
 // errChan: 传递异常的通道，一旦传递，进程即将退出
 func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr string, multicastPort string, outboundInterface *net.Interface, sigCtx context.Context, chanMsg chan<- *entities.SwitchMessage, errChan chan<- error) {
-	// 维护一个序号，为每个发现消息分配唯一序号
-	var discoverySeq uint64
 	// 获得本机的首选出站 IP 地址，用于过滤掉自己发送的组播消息
 	selfIp, err := utils.GetOutboundIP()
 	if err != nil {
@@ -135,12 +133,12 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 					continue
 				}
 				discoveryMsg.SwitchId = nodeId
-				discoveryMsg.DiscoverySeq = discoverySeq
+				discoveryMsg.DiscoverySeq = globalDiscoverySeq.Load()
 				discoveryMsg.DiscoveryTtl = constants.MaxDiscoveryMessageTTL
 				// 在包中塞入原始发送者 IP 地址
 				discoveryMsg.OriginalAddr = clientIP.String()
 				// 序号递增
-				discoverySeq++
+				globalDiscoverySeq.Add(1)
 				// 包装成 SwitchMessage
 				switchMsg := &entities.SwitchMessage{
 					SourceAddr: remoteAddr,

@@ -65,9 +65,10 @@ type HTTPResponse struct {
 	Body       []byte
 }
 
-// HTTPJsonPostRequest 表示一个 HTTP POST 请求，传输 JSON 数据
-type HTTPJsonPostRequest struct {
+// HTTPJsonRequest 表示一个 HTTP 请求，传输 JSON 数据
+type HTTPJsonRequest struct {
 	URL     string
+	Method  string
 	JsonBody []byte
 	RespChan chan *HTTPResponse // 可选的响应通道，用于接收响应数据
 }

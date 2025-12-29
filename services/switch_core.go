@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
 	"github.com/somebottle/localsend-switch/utils"
 )
 
-// setUpForwarder 启动交换数据转发器
+// setUpPassiveForwarder 启动被动的交换数据转发器，将接收到的交换数据转发给其他节点，并向远端节点注册本机 LocalSend 客户端信息
 //
 // SwitchLounge: 交换数据等候室
 // localClientLounge: 本地客户端信息等候室
@@ -21,13 +22,14 @@ import (
 // httpRequestChan: HTTP 请求发送通道
 // errChan: 致命错误通道
 // sigCtx: 中断信号上下文
-func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, httpRequestChan chan<- *entities.HTTPJsonPostRequest, errChan chan<- error, sigCtx context.Context) {
-	// 构建 HTTP 请求对象
-	makeHTTPRequest := func(ip net.IP, port uint16, protocol string, jsonBody []byte) *entities.HTTPJsonPostRequest {
+func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, httpRequestChan chan<- *entities.HTTPJsonRequest, errChan chan<- error, sigCtx context.Context) {
+	// 构建 HTTP 请求对象的方法
+	makeHTTPRequest := func(ip net.IP, port uint16, protocol string, jsonBody []byte) *entities.HTTPJsonRequest {
 		// 拼接成 host:port 形式，会自动用方括号包裹可能的 IPv6 地址
 		hostPortStr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-		return &entities.HTTPJsonPostRequest{
+		return &entities.HTTPJsonRequest{
 			URL:      fmt.Sprintf("%s://%s/api/localsend/v2/register", protocol, hostPortStr),
+			Method:   "POST",
 			JsonBody: jsonBody,
 			RespChan: nil, // 不需要响应
 		}
@@ -35,7 +37,7 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 	// 获得本机 IP 以判断包是不是自己发出的
 	selfIp, err := utils.GetOutboundIP()
 	if err != nil {
-		errChan <- fmt.Errorf("Error getting outbound IP address in forwarder: %w", err)
+		errChan <- fmt.Errorf("Error getting outbound IP address in passiveforwarder: %w", err)
 		return
 	}
 	for {
@@ -102,8 +104,141 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 	}
 }
 
+// setUpProactiveBroadcaster 启动定时主动广播，定期向已知节点广播本机 LocalSend 客户端信息
+//
+// nodeId: 本节点唯一标识符
+// LocalClientLounge: 本地客户端信息等候室
+// tcpConnHub: TCP 连接管理器
+// sigCtx: 中断信号上下文
+func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, sigCtx context.Context) {
+	// 获得本机 IP
+	selfIp, err := utils.GetOutboundIP()
+	if err != nil {
+		fmt.Printf("Error getting outbound IP address in proactive broadcaster: %v\n", err)
+		return
+	}
+	// 定时器
+	ticker := time.NewTicker(constants.LOCAL_CLIENT_BROADCAST_INTERVAL * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-sigCtx.Done():
+			// 收到退出信号
+			return
+		case <-ticker.C:
+			// 定时广播
+			fmt.Println("[DEBUG] Proactively broadcasting local client info to connected switch nodes")
+			// 先获得本地客户端信息列表
+			for localClientInfo := range localClientLounge.SyncGet() {
+				localSwitchMsg := utils.PackLocalSendClientInfoIntoSwitchMessage(localClientInfo, nodeId, globalDiscoverySeq.Load(), selfIp)
+				// 对每个已连接的节点发送交换消息
+				for _, cwc := range tcpConnHub.GetAllConnections() {
+					localSwitchMsg.Payload.DiscoveryTtl--
+					cwc.SendChan <- localSwitchMsg
+				}
+			}
+		}
+	}
+}
+
+// setUpClientAliveChecker 启动本地客户端存活检查器，定期向本地 LocalSend 客户端发送 HTTP 探测请求，如果存活会自动加入等候室
+//
+// 如果没有这个协程，只有被动等待 LocalSend 客户端发送 UDP 发现包才能探测到并加入等候室
+//
+// localSendPort: 本地 LocalSend 客户端监听的端口
+// localClientLounge: 本地客户端信息等候室
+// httpRequestChan: 发送 HTTP 请求的通道
+// sigCtx: 中断信号上下文
+func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClientLounge, httpRequestChan chan<- *entities.HTTPJsonRequest, sigCtx context.Context) {
+	// 构造探测请求的方法
+	makeProbeRequest := func(port string, protocol string) (*entities.HTTPJsonRequest, <-chan *entities.HTTPResponse) {
+		respChan := make(chan *entities.HTTPResponse, 1)
+		return &entities.HTTPJsonRequest{
+			URL:      fmt.Sprintf("%s://127.0.0.1:%s/api/localsend/v2/info", protocol, port),
+			Method:   "GET",
+			RespChan: respChan,
+		}, respChan
+	}
+	// 定时器
+	ticker := time.NewTicker(constants.LOCAL_CLIENT_ALIVE_CHECK_INTERVAL * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-sigCtx.Done():
+			// 收到退出信号
+			return
+		case <-ticker.C:
+			// 定时探测
+			fmt.Println("[DEBUG] Proactively checking local client alive status")
+			// 同时在 http 和 https 协议上探测
+			httpReq, httpRespChan := makeProbeRequest(localSendPort, "http")
+			httpsReq, httpsRespChan := makeProbeRequest(localSendPort, "https")
+			// 发送请求
+			select {
+			case httpRequestChan <- httpReq:
+			case <-sigCtx.Done():
+				return
+			}
+			select {
+			case httpRequestChan <- httpsReq:
+			case <-sigCtx.Done():
+				return
+			}
+			// 等待响应
+			var respHttp, respHttps *entities.HTTPResponse
+			select {
+			case respHttp = <-httpRespChan:
+			case <-sigCtx.Done():
+				return
+			}
+			select {
+			case respHttps = <-httpsRespChan:
+			case <-sigCtx.Done():
+				return
+			}
+			if respHttp == nil && respHttps == nil {
+				// 探测不到本地客户端存活
+				fmt.Println("[DEBUG] Local client inactive.")
+				continue
+			}
+			// 判断协议
+			var protocol string = "https"
+			if respHttps == nil {
+				respHttps = respHttp
+				protocol = "http"
+			}
+			// 解析响应体
+			var localClientInfo entities.LocalSendClientInfo
+			if err := json.Unmarshal(respHttps.Body, &localClientInfo); err != nil {
+				fmt.Printf("Warning: failed to parse local client info from probe response: %v\n", err)
+				continue
+			}
+			// 值得注意的是 /v2/info 接口会缺失 Port 和 Protocol 字段，需要补全
+			uint16Port, err := utils.ParsePort(localSendPort)
+			if err != nil {
+				fmt.Printf("Warning: failed to parse local send port string to uint16: %v\n", err)
+				continue
+			}
+			localClientInfo.Port = uint16Port
+			localClientInfo.Protocol = protocol
+			// 加入等候室
+			localClientLounge.Add(&localClientInfo)
+			fmt.Printf("[DEBUG] Local client active: %+v\n", localClientInfo)
+		}
+	}
+}
+
 // SetUpSwitchCore 设置并启动交换服务核心模块
-func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, errChan chan<- error) {
+//
+// nodeId: 本节点唯一标识符
+// peerAddr: 远端 switch 节点地址
+// peerPort: 远端 switch 节点端口
+// servPort: 本地 switch 服务监听端口
+// sigCtx: 中断信号上下文
+// multicastChan: 来自组播监听器的交换数据通道
+// multicastPort: 本地 LocalSend 监听端口
+// errChan: 致命错误通道
+func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, multicastPort string, errChan chan<- error) {
 	// 通过 TCP 传输的交换数据通道
 	switchDataChan := make(chan *entities.SwitchMessage, constants.SwitchDataReceiveChanSize)
 	// 维护 TCP 连接的管理器
@@ -113,7 +248,7 @@ func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx c
 	// 维护本地客户端信息的等候室
 	var localClientLounge *LocalClientLounge = NewLocalClientLounge()
 	// 用来发送 HTTP 请求的通道
-	httpRequestChan := make(chan *entities.HTTPJsonPostRequest, constants.HTTPClientWorkerCount*2)
+	httpRequestChan := make(chan *entities.HTTPJsonRequest, constants.HTTPClientWorkerCount*2)
 	// 清理
 	defer func() {
 		localClientLounge.Close()
@@ -130,7 +265,11 @@ func SetUpSwitchCore(peerAddr string, peerPort string, servPort string, sigCtx c
 		go setUpHTTPSender(httpRequestChan, sigCtx)
 	}
 	// 启动交换数据转发器
-	go setUpForwarder(switchLounge, localClientLounge, tcpConnHub, httpRequestChan, errChan, sigCtx)
+	go setUpPassiveForwarder(switchLounge, localClientLounge, tcpConnHub, httpRequestChan, errChan, sigCtx)
+	// 启动定时主动广播器
+	go setUpProactiveBroadcaster(nodeId, localClientLounge, tcpConnHub, sigCtx)
+	// 启动本地客户端存活探测器
+	go setUpClientAliveChecker(multicastPort, localClientLounge, httpRequestChan, sigCtx)
 
 	// 把接收到的交换数据写入等候室
 	for {

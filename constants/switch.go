@@ -11,4 +11,8 @@ const (
 	SWITCH_LOUNGE_SIZE = 255 * 255
 	// 本地客户端信息缓存时间，单位为秒
 	LOCAL_CLIENT_INFO_CACHE_LIFETIME = 60
+	// 定时广播本地客户端信息的时间间隔，单位为秒
+	LOCAL_CLIENT_BROADCAST_INTERVAL = 30
+	// 定时探测本地客户端存活的时间间隔，单位为秒
+	LOCAL_CLIENT_ALIVE_CHECK_INTERVAL = 15
 )

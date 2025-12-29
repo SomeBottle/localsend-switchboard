@@ -5,9 +5,12 @@ package utils
 import (
 	"crypto/rand"
 	"errors"
+	"net"
 	"strconv"
 
+	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
+	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 )
 
 const ID_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -45,4 +48,30 @@ func SwitchMessageToLocalSendClientInfo(switchMsg *entities.SwitchMessage) (*ent
 		Download:    discoveryMsg.Download,
 	}
 	return clientInfo, nil
+}
+
+// packLocalSendClientInfoIntoSwitchMessage 将 LocalSend 客户端信息打包进交换消息
+//
+// nodeId: 节点 ID
+// discoverySeq: 发现包序列号
+// selfIP: 本机 IP 地址，用于填充 original_addr 字段
+func PackLocalSendClientInfoIntoSwitchMessage(clientInfo *entities.LocalSendClientInfo, nodeId string, discoverySeq uint64, selfIP net.IP) *entities.SwitchMessage {
+	discoveryMsg := &switchdata.DiscoveryMessage{
+		SwitchId:     nodeId,
+		DiscoverySeq: discoverySeq,
+		DiscoveryTtl: constants.MaxDiscoveryMessageTTL,
+		Alias:        clientInfo.Alias,
+		Version:      clientInfo.Version,
+		DeviceModel:  clientInfo.DeviceModel,
+		DeviceType:   clientInfo.DeviceType,
+		Fingerprint:  clientInfo.Fingerprint,
+		Port:         int32(clientInfo.Port),
+		Protocol:     clientInfo.Protocol,
+		Download:     clientInfo.Download,
+		OriginalAddr: selfIP.String(),
+	}
+	return &entities.SwitchMessage{
+		// SourceAddr 可以不用填，发送时只看 Payload
+		Payload: discoveryMsg,
+	}
 }

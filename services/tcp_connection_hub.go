@@ -73,6 +73,11 @@ func (hub *TCPConnectionHub) NumConnections() int {
 	return len(hub.conns)
 }
 
+// GetAllConnections 返回所有 TCP 连接构成的切片
+func (hub *TCPConnectionHub) GetAllConnections() []ConnWithChan {
+	return hub.GetConnectionsExcept(nil)
+}
+
 // GetConnections 返回除了来源为 remoteAddr 以外所有 TCP 连接构成的切片
 //
 // remoteAddr: 要排除的远端连接地址
@@ -81,7 +86,7 @@ func (hub *TCPConnectionHub) GetConnectionsExcept(remoteAddr net.Addr) []ConnWit
 	defer hub.mutex.Unlock()
 	cwcSlice := make([]ConnWithChan, 0, len(hub.conns))
 	for addrStr, cwc := range hub.conns {
-		if addrStr != remoteAddr.String() {
+		if remoteAddr == nil || addrStr != remoteAddr.String() {
 			cwcSlice = append(cwcSlice, cwc)
 		}
 	}
