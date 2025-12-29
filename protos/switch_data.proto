@@ -14,10 +14,12 @@ message DiscoveryMessage {
     // 以下为原发现信息
     string alias = 4;          // 客户端别名
     string version = 5;        // 客户端版本
-    string device_model = 6;  // 设备型号
-    string device_type = 7;   // 设备类型
+    string device_model = 6 [json_name = "deviceModel"];  // 设备型号
+    string device_type = 7 [json_name = "deviceType"];   // 设备类型
     string fingerprint = 8;   // 客户端指纹
     int32 port = 9;            // 监听端口
     string protocol = 10;     // 协议
     bool download = 11;        // 是否支持下载
+    // 新增字段，记录原始发送者地址
+    string original_addr = 12; // 原始发送者地址
 }

@@ -24,8 +24,10 @@ import (
 func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLounge, tcpConnHub *TCPConnectionHub, httpRequestChan chan<- *entities.HTTPJsonPostRequest, errChan chan<- error, sigCtx context.Context) {
 	// 构建 HTTP 请求对象
 	makeHTTPRequest := func(ip net.IP, port uint16, protocol string, jsonBody []byte) *entities.HTTPJsonPostRequest {
+		// 拼接成 host:port 形式，会自动用方括号包裹可能的 IPv6 地址
+		hostPortStr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 		return &entities.HTTPJsonPostRequest{
-			URL:      fmt.Sprintf("%s://%s:%d/api/localsend/v2/register", protocol, ip.String(), port),
+			URL:      fmt.Sprintf("%s://%s/api/localsend/v2/register", protocol, hostPortStr),
 			JsonBody: jsonBody,
 			RespChan: nil, // 不需要响应
 		}
@@ -46,7 +48,7 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 				// 等候室关闭，退出
 				return
 			}
-			// 对于每个交换信息，转发给所有连接的节点 (除开其来源节点)
+			// 对于每个交换信息，转发给所有连接的节点 (除开其来源节点的连接)
 			for _, cwc := range tcpConnHub.GetConnectionsExcept(switchMsg.SourceAddr) {
 				// 交换信息 TTL 减一
 				switchMsg.Payload.DiscoveryTtl--
@@ -58,32 +60,21 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 				// 把交换信息发送到对应的发送通道
 				cwc.SendChan <- switchMsg
 			}
-
-			var remoteIP net.IP
-			switch addr := switchMsg.SourceAddr.(type) {
-			case *net.TCPAddr:
-				remoteIP = addr.IP
-			case *net.UDPAddr:
-				remoteIP = addr.IP
-			default:
-				fmt.Println("Warning: unknown net.Addr type in switch message source address")
+			// 该发现包的真实发起地址
+			var remoteIP net.IP = net.ParseIP(switchMsg.Payload.OriginalAddr)
+			if remoteIP == nil {
+				// 无法解析包的原始 IP 地址，包无效
+				fmt.Printf("Warning: failed to parse original address from switch message: %s\n", switchMsg.Payload.OriginalAddr)
 				continue
 			}
-			// 每个交换信息，只要其来源不是本机，就同时对其来源和本机 LocalSend 客户端发送注册请求
-			// 对其来源: 发送本机的 LocalSend 客户端信息
-			// 对本机 LocalSend 客户端: 发送来源想要交换的信息
+			// 每个交换信息，只要其**发起方**不是本机，就同时对其**发起地址**发送注册请求
+			// 对其发起地址: 发送本机的 LocalSend 客户端信息
 			if !remoteIP.Equal(selfIp) {
 				fmt.Printf("[DEBUG] Received non-local client info: %+v\n", switchMsg.Payload)
 				// 转换为 LocalSend 客户端信息
 				remoteClientInfo, err := utils.SwitchMessageToLocalSendClientInfo(switchMsg)
 				if err != nil {
 					fmt.Printf("Warning: failed to convert switch message to local client info for HTTP request: %v\n", err)
-					continue
-				}
-				// 序列化为 JSON
-				remoteJsonPayload, err := json.Marshal(remoteClientInfo)
-				if err != nil {
-					fmt.Printf("Warning: failed to serialize switch message payload to JSON for HTTP request: %v\n", err)
 					continue
 				}
 
@@ -94,16 +85,6 @@ func setUpForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalClientLo
 					if err != nil {
 						fmt.Printf("Warning: failed to serialize local client info to JSON for HTTP request: %v\n", err)
 						continue
-					}
-					// 在本地客户端注册远端客户端信息
-					localHttpReq := makeHTTPRequest(selfIp, localClientInfo.Port, localClientInfo.Protocol, remoteJsonPayload)
-					fmt.Printf("[DEBUG] Register remote client on %s\n", localHttpReq.URL)
-					// 发送 HTTP 请求
-					select {
-					case httpRequestChan <- localHttpReq:
-					case <-sigCtx.Done():
-						// 收到退出信号
-						return
 					}
 					// 在远端客户端注册本地客户端信息
 					remoteHttpReq := makeHTTPRequest(remoteIP, remoteClientInfo.Port, remoteClientInfo.Protocol, localJsonPayload)

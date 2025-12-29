@@ -10,6 +10,7 @@ import (
 
 // SwitchMessage 包装了连接要递交的交换数据
 type SwitchMessage struct {
+	// 数据发送来源地址，可能是中间节点 IP，不一定是发送信息发出的原始地址
 	SourceAddr net.Addr
 	Payload    *switchdata.DiscoveryMessage
 }

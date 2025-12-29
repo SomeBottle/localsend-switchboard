@@ -31,14 +31,16 @@ type DiscoveryMessage struct {
 	DiscoverySeq uint64                 `protobuf:"varint,2,opt,name=discovery_seq,json=discoverySeq,proto3" json:"discovery_seq,omitempty"` // 发现包序列号
 	DiscoveryTtl uint32                 `protobuf:"varint,3,opt,name=discovery_ttl,json=discoveryTtl,proto3" json:"discovery_ttl,omitempty"` // 发现包存活时间（跳数）
 	// 以下为原发现信息
-	Alias         string `protobuf:"bytes,4,opt,name=alias,proto3" json:"alias,omitempty"`                                // 客户端别名
-	Version       string `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`                            // 客户端版本
-	DeviceModel   string `protobuf:"bytes,6,opt,name=device_model,json=deviceModel,proto3" json:"device_model,omitempty"` // 设备型号
-	DeviceType    string `protobuf:"bytes,7,opt,name=device_type,json=deviceType,proto3" json:"device_type,omitempty"`    // 设备类型
-	Fingerprint   string `protobuf:"bytes,8,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`                    // 客户端指纹
-	Port          int32  `protobuf:"varint,9,opt,name=port,proto3" json:"port,omitempty"`                                 // 监听端口
-	Protocol      string `protobuf:"bytes,10,opt,name=protocol,proto3" json:"protocol,omitempty"`                         // 协议
-	Download      bool   `protobuf:"varint,11,opt,name=download,proto3" json:"download,omitempty"`                        // 是否支持下载
+	Alias       string `protobuf:"bytes,4,opt,name=alias,proto3" json:"alias,omitempty"`                                // 客户端别名
+	Version     string `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`                            // 客户端版本
+	DeviceModel string `protobuf:"bytes,6,opt,name=device_model,json=deviceModel,proto3" json:"device_model,omitempty"` // 设备型号
+	DeviceType  string `protobuf:"bytes,7,opt,name=device_type,json=deviceType,proto3" json:"device_type,omitempty"`    // 设备类型
+	Fingerprint string `protobuf:"bytes,8,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`                    // 客户端指纹
+	Port        int32  `protobuf:"varint,9,opt,name=port,proto3" json:"port,omitempty"`                                 // 监听端口
+	Protocol    string `protobuf:"bytes,10,opt,name=protocol,proto3" json:"protocol,omitempty"`                         // 协议
+	Download    bool   `protobuf:"varint,11,opt,name=download,proto3" json:"download,omitempty"`                        // 是否支持下载
+	// 新增字段，记录原始发送者地址
+	OriginalAddr  string `protobuf:"bytes,12,opt,name=original_addr,json=originalAddr,proto3" json:"original_addr,omitempty"` // 原始发送者地址
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -150,12 +152,19 @@ func (x *DiscoveryMessage) GetDownload() bool {
 	return false
 }
 
+func (x *DiscoveryMessage) GetOriginalAddr() string {
+	if x != nil {
+		return x.OriginalAddr
+	}
+	return ""
+}
+
 var File_switch_data_proto protoreflect.FileDescriptor
 
 const file_switch_data_proto_rawDesc = "" +
 	"\n" +
 	"\x11switch_data.proto\x12\n" +
-	"switchdata\"\xdb\x02\n" +
+	"switchdata\"\x80\x03\n" +
 	"\x10DiscoveryMessage\x12\x1b\n" +
 	"\tswitch_id\x18\x01 \x01(\tR\bswitchId\x12#\n" +
 	"\rdiscovery_seq\x18\x02 \x01(\x04R\fdiscoverySeq\x12#\n" +
@@ -169,7 +178,8 @@ const file_switch_data_proto_rawDesc = "" +
 	"\x04port\x18\t \x01(\x05R\x04port\x12\x1a\n" +
 	"\bprotocol\x18\n" +
 	" \x01(\tR\bprotocol\x12\x1a\n" +
-	"\bdownload\x18\v \x01(\bR\bdownloadB\x1aZ\x18switchdata/v1;switchdatab\x06proto3"
+	"\bdownload\x18\v \x01(\bR\bdownload\x12#\n" +
+	"\roriginal_addr\x18\f \x01(\tR\foriginalAddrB\x1aZ\x18switchdata/v1;switchdatab\x06proto3"
 
 var (
 	file_switch_data_proto_rawDescOnce sync.Once

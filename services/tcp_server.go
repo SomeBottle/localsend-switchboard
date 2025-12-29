@@ -161,7 +161,7 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 				continue
 			}
 			// 发送数据
-			if err := utils.WriteAll(conn, payload); err != nil {
+			if err := utils.WriteAllBytes(conn, payload); err != nil {
 				// 发送数据失败，可能是连接出错
 				fmt.Printf("Failed to send data over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
 				continue

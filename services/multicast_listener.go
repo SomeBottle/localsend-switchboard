@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/somebottle/localsend-switch/entities"
 	"github.com/somebottle/localsend-switch/utils"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -35,6 +35,10 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 	if err != nil {
 		errChan <- fmt.Errorf("Error getting outbound IP address: %w", err)
 		return
+	}
+	// protojson 解析器设置
+	jsonUnmarshaler := protojson.UnmarshalOptions{
+		DiscardUnknown: true, // 丢弃未知字段
 	}
 	// for 循环保持连接
 	for {
@@ -118,7 +122,9 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 				}
 				// 解析数据
 				discoveryMsg := switchdata.DiscoveryMessage{}
-				if err := json.Unmarshal(buf[:n], &discoveryMsg); err != nil {
+				fmt.Printf("[DEBUG] Received RAW UDP packet from %s - Data: %s\n", remoteAddr.String(), string(buf[:n]))
+				// 因为 discoveryMsg 是 protobuf 格式，所以用 protojson 解析
+				if err := jsonUnmarshaler.Unmarshal(buf[:n], &discoveryMsg); err != nil {
 					fmt.Printf("Warning: Failed to unmarshal discovery message from %s: %v\n", remoteAddr.String(), err)
 					continue
 				}
@@ -131,6 +137,8 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 				discoveryMsg.SwitchId = nodeId
 				discoveryMsg.DiscoverySeq = discoverySeq
 				discoveryMsg.DiscoveryTtl = constants.MaxDiscoveryMessageTTL
+				// 在包中塞入原始发送者 IP 地址
+				discoveryMsg.OriginalAddr = clientIP.String()
 				// 序号递增
 				discoverySeq++
 				// 包装成 SwitchMessage

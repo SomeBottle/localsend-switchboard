@@ -50,11 +50,11 @@ func GetInterfaceByIP(ip net.IP) (*net.Interface, error) {
 }
 
 
-// WriteAll 确保将所有数据写入到连接中
+// WriteAllBytes 确保将所有字节数据写入到连接中
 //
 // conn: 目标连接
 // data: 要写入的数据切片
-func WriteAll(conn net.Conn, data []byte) error {
+func WriteAllBytes(conn net.Conn, data []byte) error {
 	for len(data) > 0 {
 		n, err := conn.Write(data)
 		if err != nil {
