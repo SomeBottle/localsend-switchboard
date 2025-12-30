@@ -17,5 +17,9 @@ A lightweight utility to help LocalSend's device discovery in VLAN-segmented loc
 2. Build the project: 
 
     ```bash
-    go build -o localsend-switchboard
+    go build -o localsend-switch
+    # Cross Compilation
+    GOOS=linux GOARCH=amd64 go build -o compiled/localsend-switch-linux-amd64
+    GOOS=windows GOARCH=amd64 go build -o compiled/localsend-switch-windows-amd64.exe
+    GOOS=darwin GOARCH=amd64 go build -o compiled/localsend-switch-macos-amd64
     ```
