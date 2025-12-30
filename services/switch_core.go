@@ -236,9 +236,9 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 // servPort: 本地 switch 服务监听端口
 // sigCtx: 中断信号上下文
 // multicastChan: 来自组播监听器的交换数据通道
-// multicastPort: 本地 LocalSend 监听端口
+// localSendPort: 本地 LocalSend 监听 (组播 / HTTP) 端口
 // errChan: 致命错误通道
-func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, multicastPort string, errChan chan<- error) {
+func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, localSendPort string, errChan chan<- error) {
 	// 通过 TCP 传输的交换数据通道
 	switchDataChan := make(chan *entities.SwitchMessage, constants.SwitchDataReceiveChanSize)
 	// 维护 TCP 连接的管理器
@@ -269,7 +269,7 @@ func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort s
 	// 启动定时主动广播器
 	go setUpProactiveBroadcaster(nodeId, localClientLounge, tcpConnHub, sigCtx)
 	// 启动本地客户端存活探测器
-	go setUpClientAliveChecker(multicastPort, localClientLounge, httpRequestChan, sigCtx)
+	go setUpClientAliveChecker(localSendPort, localClientLounge, httpRequestChan, sigCtx)
 
 	// 把接收到的交换数据写入等候室
 	for {

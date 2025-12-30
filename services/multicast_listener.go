@@ -8,11 +8,11 @@ import (
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
-	"github.com/somebottle/localsend-switch/utils"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	"github.com/somebottle/localsend-switch/utils"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // ListenLocalSendMulticast 启动 LocalSend 组播消息监听
@@ -21,13 +21,13 @@ import (
 //
 // nodeId: 本节点的唯一标识符
 // networkType: "udp4" 或 "udp6"
-// multicastAddr: 组播地址
-// multicastPort: 组播端口
+// localSendAddr: LocalSend (组播) 地址
+// localSendPort: LocalSend (组播 / HTTP) 端口
 // outboundInterface: 出站网络接口
 // sigCtx: 中断信号上下文，用于优雅关闭监听
 // chanMsg: 传递接收到的组播消息的通道
 // errChan: 传递异常的通道，一旦传递，进程即将退出
-func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr string, multicastPort string, outboundInterface *net.Interface, sigCtx context.Context, chanMsg chan<- *entities.SwitchMessage, errChan chan<- error) {
+func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr string, localSendPort string, outboundInterface *net.Interface, sigCtx context.Context, chanMsg chan<- *entities.SwitchMessage, errChan chan<- error) {
 	// 获得本机的首选出站 IP 地址，用于过滤掉自己发送的组播消息
 	selfIp, err := utils.GetOutboundIP()
 	if err != nil {
@@ -49,13 +49,13 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 			var packetConn entities.PacketConn
 			switch networkType {
 			case "udp4":
-				pc4, err := net.ListenPacket("udp4", ":"+multicastPort)
+				pc4, err := utils.ListenPacketWithREUSEADDR("udp4", ":"+localSendPort)
 				if err != nil {
 					return true, fmt.Errorf("Error creating UDP4 packet connection: %w", err)
 				}
 				p4 := ipv4.NewPacketConn(pc4)
 				// 加入组播组
-				if err := p4.JoinGroup(outboundInterface, &net.UDPAddr{IP: net.ParseIP(multicastAddr)}); err != nil {
+				if err := p4.JoinGroup(outboundInterface, &net.UDPAddr{IP: net.ParseIP(localSendAddr)}); err != nil {
 					return true, fmt.Errorf("Error joining IPv4 multicast group: %w", err)
 				}
 				packetConn = entities.PacketConn{
@@ -63,13 +63,13 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 					IPv6Conn: nil,
 				}
 			case "udp6":
-				pc6, err := net.ListenPacket("udp6", "[::]:"+multicastPort)
+				pc6, err := utils.ListenPacketWithREUSEADDR("udp6", "[::]:"+localSendPort)
 				if err != nil {
 					return true, fmt.Errorf("Error creating UDP6 packet connection: %w", err)
 				}
 				p6 := ipv6.NewPacketConn(pc6)
 				// 加入组播组
-				if err := p6.JoinGroup(outboundInterface, &net.UDPAddr{IP: net.ParseIP(multicastAddr)}); err != nil {
+				if err := p6.JoinGroup(outboundInterface, &net.UDPAddr{IP: net.ParseIP(localSendAddr)}); err != nil {
 					return true, fmt.Errorf("Error joining IPv6 multicast group: %w", err)
 				}
 				packetConn = entities.PacketConn{
@@ -95,7 +95,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, multicastAddr s
 					return
 				}
 			}()
-			fmt.Printf("Joined Multicast Group: %s:%s\n", multicastAddr, multicastPort)
+			fmt.Printf("Joined Multicast Group: %s:%s\n", localSendAddr, localSendPort)
 			for {
 				// 设置超时时间防止阻塞过久
 				if err := packetConn.SetReadDeadline(time.Now().Add(constants.MulticastReadTimeout * time.Second)); err != nil {

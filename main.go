@@ -20,8 +20,8 @@ func main() {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// ------------ 先读取配置
-	multicastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR")
-	multicastPort := os.Getenv("LOCALSEND_MULTICAST_PORT")
+	localSendMulticastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR") // LocalSend 组播地址
+	localSendPort := os.Getenv("LOCALSEND_SERVER_PORT") // LocalSend 组播 / HTTP 端口
 	peerAddr := os.Getenv("LOCALSEND_SWITCH_PEER_ADDR")
 	peerPort := os.Getenv("LOCALSEND_SWITCH_PEER_PORT")
 	servPort := os.Getenv("LOCALSEND_SWITCH_SERV_PORT")
@@ -30,20 +30,20 @@ func main() {
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
 	flag.StringVar(&peerPort, "peer-port", peerPort, "Peer port (same as service port if not specified)") // 另一个 switch 节点的端口
 	flag.StringVar(&servPort, "serv-port", servPort, "Service port (same as peer port if not specified)") // 本地 TCP 服务监听端口
-	flag.StringVar(&multicastAddr, "ls-addr", multicastAddr, "Multicast address")
-	flag.StringVar(&multicastPort, "ls-port", multicastPort, "Multicast port")
+	flag.StringVar(&localSendMulticastAddr, "ls-addr", localSendMulticastAddr, "LocalSend (Multicast) address")
+	flag.StringVar(&localSendPort, "ls-port", localSendPort, "LocalSend (Multicast / HTTP) port")
 
 	flag.Parse()
 
 	// 没有配置就用默认值
-	if multicastAddr == "" {
-		multicastAddr = constants.LocalSendDefaultMulticastIPv4
-		fmt.Println("Multicast address not provided, using default value: ", multicastAddr)
+	if localSendMulticastAddr == "" {
+		localSendMulticastAddr = constants.LocalSendDefaultMulticastIPv4
+		fmt.Println("Multicast address not provided, using default value: ", localSendMulticastAddr)
 	}
 
-	if multicastPort == "" {
-		multicastPort = constants.LocalSendDefaultMulticastPort
-		fmt.Println("Multicast port not provided, using default value: ", multicastPort)
+	if localSendPort == "" {
+		localSendPort = constants.LocalSendDefaultPort
+		fmt.Println("Multicast port not provided, using default value: ", localSendPort)
 	}
 
 	if peerPort == "" {
@@ -60,7 +60,7 @@ func main() {
 	}
 
 	// 检查是否为 IPv6 地址
-	isIpv6, err := utils.IsIpv6(multicastAddr)
+	isIpv6, err := utils.IsIpv6(localSendMulticastAddr)
 	if err != nil {
 		fmt.Printf("Error parsing IP address: %v\n", err)
 		return
@@ -102,10 +102,10 @@ func main() {
 	multicastChan := make(chan *entities.SwitchMessage, constants.MulticastChanSize)
 	// 出现严重异常时的通知通道
 	errChan := make(chan error)
-	go services.ListenLocalSendMulticast(nodeId, network, multicastAddr, multicastPort, outBoundInterface, sigCtx, multicastChan, errChan)
+	go services.ListenLocalSendMulticast(nodeId, network, localSendMulticastAddr, localSendPort, outBoundInterface, sigCtx, multicastChan, errChan)
 
 	// ------------ 启动交换服务核心模块
-	go services.SetUpSwitchCore(nodeId, peerAddr, peerPort, servPort, sigCtx, multicastChan, multicastPort, errChan)
+	go services.SetUpSwitchCore(nodeId, peerAddr, peerPort, servPort, sigCtx, multicastChan, localSendPort, errChan)
 
 	// 测试接收数据
 	for {

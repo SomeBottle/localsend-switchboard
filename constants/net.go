@@ -4,8 +4,8 @@ package constants
 const (
 	// LocalSend 默认的 IPv4 组播地址
 	LocalSendDefaultMulticastIPv4 = "224.0.0.167"
-	// LocalSend 默认的组播端口
-	LocalSendDefaultMulticastPort = "53317"
+	// LocalSend 默认的组播 /HTTP 端口
+	LocalSendDefaultPort = "53317"
 	// 组播数据读取时字节缓冲区大小
 	MulticastReadBufferSize = 65536 // 64 KiB
 	// 组播数据读取超时时间
