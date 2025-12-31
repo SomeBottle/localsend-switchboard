@@ -44,6 +44,10 @@ func main() {
 	flag.BoolVar(&logDebug, "debug", logDebug, "Enable debug logging")
 	flag.StringVar(&clientBroadcastIntervalStr, "client-broadcast-interval", clientBroadcastIntervalStr, "The interval in seconds for broadcasting local clients to all peer switches")
 	flag.StringVar(&clientAliveCheckIntervalStr, "client-alive-check-interval", clientAliveCheckIntervalStr, "The interval in seconds for checking local client aliveness")
+	
+	// 开机自启选项
+	var autoStart string
+	flag.StringVar(&autoStart, "autostart", "", "Set auto start on system boot, options: 'enable', 'disable'")
 
 	flag.Parse()
 
@@ -56,6 +60,33 @@ func main() {
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
+
+	// ------------ 开机自启设置
+	switch autoStart {
+		case "enable":
+			err := utils.SetAutoStart(true)
+			if err != nil {
+				slog.Error("Failed to enable autostart", "error", err)
+				return
+			}
+			// 启动后直接退出
+			slog.Info("Autostart enabled successfully")
+			return
+		case "disable":
+			err := utils.SetAutoStart(false)
+			if err != nil {
+				slog.Error("Failed to disable autostart", "error", err)
+				return
+			}
+			// 启动后直接退出
+			slog.Info("Autostart disabled successfully")
+			return
+		case "":
+			// 没有传入就正常启动后续服务
+		default:
+			slog.Error("Invalid value for autostart option, should be 'enable', 'disable' or empty", "input", autoStart)
+			return
+	}
 
 	// ------------ 配置默认值以及配置检查
 	if clientBroadcastIntervalStr != "" {
