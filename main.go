@@ -148,7 +148,7 @@ func main() {
 	for {
 		select {
 		case err := <-errChan:
-			panic(fmt.Sprintf("Exited with error: %v\n", err))
+			panic(fmt.Sprintf("Exited with error: %v", err))
 		case <-sigCtx.Done():
 			slog.Info("Shutting down gracefully...")
 			// 等待一会儿以确保所有 goroutine 都能退出

@@ -113,7 +113,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 					}
 					// 如果是被中断，退出
 					if sigCtx.Err() != nil {
-						slog.Debug("Multicast listener exiting gracefully...\n")
+						slog.Debug("Multicast listener exiting gracefully...")
 						return true, nil
 					}
 					// 否则重启服务
