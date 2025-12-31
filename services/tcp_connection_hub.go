@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 )
 
@@ -41,11 +41,11 @@ func (hub *TCPConnectionHub) AddConnection(conn *net.TCPConn) (<-chan *entities.
 		return nil, errors.New("Connection already exists")
 	}
 	// 另外检查连接数是否超过限制
-	if len(hub.conns) >= constants.MaxTCPConnections {
+	if len(hub.conns) >= configs.MaxTCPConnections {
 		return nil, errors.New("Maximum TCP connections reached, ignoring new connection")
 	}
 	// 创建发送通道
-	sendChan := make(chan *entities.SwitchMessage, constants.TCPSocketSendChanSize)
+	sendChan := make(chan *entities.SwitchMessage, configs.TCPSocketSendChanSize)
 	hub.conns[remoteAddrStr] = ConnWithChan{
 		Conn:     conn,
 		SendChan: sendChan,

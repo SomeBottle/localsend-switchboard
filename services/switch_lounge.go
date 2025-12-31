@@ -9,7 +9,7 @@ import (
 	"time"
 	"errors"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	"github.com/somebottle/localsend-switch/utils"
 )
@@ -74,7 +74,7 @@ func NewSwitchLounge() *SwitchLounge {
 		closeSignal: make(chan struct{}),
 		forwardedIds:  make(map[string]bool),
 		ttlHeap:     ttlHeap,
-		lounge:      make(chan *entities.SwitchMessage, constants.SWITCH_LOUNGE_SIZE),
+		lounge:      make(chan *entities.SwitchMessage, configs.SwitchLoungeSize),
 	}
 	// 过期 ID 清理协程
 	go func() {
@@ -126,7 +126,7 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 		return nil
 	}
 	// 如果条目过多，放弃写入
-	if len(sl.forwardedIds) >= constants.SWITCH_ID_CACHE_MAX_ENTRIES {
+	if len(sl.forwardedIds) >= configs.SwitchIDCacheMaxEntries {
 		return errors.New("Switch lounge relayed ID cache is full")
 	}
 
@@ -138,7 +138,7 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 		// 加入堆中
 		heap.Push(sl.ttlHeap, &TTLHeapItem{
 			id:        discoveryId,
-			expireAt: time.Now().Add(constants.SWITCH_ID_CACHE_LIFETIME * time.Second),
+			expireAt: time.Now().Add(configs.SwitchIDCacheLifetime * time.Second),
 		})
 	default:
 		// 等候通道已满，忽略写入

@@ -11,7 +11,7 @@ import (
 	"time"
 	"log/slog"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 )
 
@@ -28,7 +28,7 @@ func setUpHTTPSender(sendReqs <-chan *entities.HTTPJsonRequest, sigCtx context.C
 			// 跳过证书验证
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
-		Timeout: constants.HTTPRequestTimeout * time.Second,
+		Timeout: configs.HTTPRequestTimeout * time.Second,
 	}
 	for {
 		select {
@@ -77,7 +77,7 @@ func setUpHTTPSender(sendReqs <-chan *entities.HTTPJsonRequest, sigCtx context.C
 			}
 			if req.RespChan != nil {
 				// 如果有响应通道就读取响应体并发送回去
-				respBody, err := io.ReadAll(io.LimitReader(response.Body, constants.HTTPResponseBodyMaxSize))
+				respBody, err := io.ReadAll(io.LimitReader(response.Body, configs.HTTPResponseBodyMaxSize))
 				_ = response.Body.Close()
 				if err != nil {
 					slog.Error("Failed to read HTTP response body", "error", err)

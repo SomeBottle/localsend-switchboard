@@ -8,7 +8,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 )
@@ -59,7 +59,7 @@ func PackLocalSendClientInfoIntoSwitchMessage(clientInfo *entities.LocalSendClie
 	discoveryMsg := &switchdata.DiscoveryMessage{
 		SwitchId:     nodeId,
 		DiscoverySeq: discoverySeq,
-		DiscoveryTtl: constants.MaxDiscoveryMessageTTL,
+		DiscoveryTtl: configs.MaxDiscoveryMessageTTL,
 		Alias:        clientInfo.Alias,
 		Version:      clientInfo.Version,
 		DeviceModel:  clientInfo.DeviceModel,

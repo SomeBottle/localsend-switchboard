@@ -1,4 +1,4 @@
-package constants
+package configs
 
 // 网络处理相关常量
 const (

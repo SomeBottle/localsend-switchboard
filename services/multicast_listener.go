@@ -7,7 +7,7 @@ import (
 	"time"
 	"log/slog"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 	"github.com/somebottle/localsend-switch/utils"
@@ -99,11 +99,11 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 			slog.Info("Joined Multicast Group", "address", localSendAddr, "port", localSendPort)
 			for {
 				// 设置超时时间防止阻塞过久
-				if err := packetConn.SetReadDeadline(time.Now().Add(constants.MulticastReadTimeout * time.Second)); err != nil {
+				if err := packetConn.SetReadDeadline(time.Now().Add(configs.MulticastReadTimeout * time.Second)); err != nil {
 					return false, fmt.Errorf("Error setting read deadline: %w", err)
 				}
 				// 读取数据
-				buf := make([]byte, constants.MulticastReadBufferSize)
+				buf := make([]byte, configs.MulticastReadBufferSize)
 				// UDP 中一次会读取整个数据报，直接 ReadFrom 即可
 				n, remoteAddr, err := packetConn.ReadFrom(buf)
 				if err != nil {
@@ -135,7 +135,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 				}
 				discoveryMsg.SwitchId = nodeId
 				discoveryMsg.DiscoverySeq = globalDiscoverySeq.Load()
-				discoveryMsg.DiscoveryTtl = constants.MaxDiscoveryMessageTTL
+				discoveryMsg.DiscoveryTtl = configs.MaxDiscoveryMessageTTL
 				// 在包中塞入原始发送者 IP 地址
 				discoveryMsg.OriginalAddr = clientIP.String()
 				// 序号递增
@@ -158,7 +158,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 		}
 
 		slog.Info("Restarting multicast listener", "previousError", err)
-		time.Sleep(constants.MulticastListenRetryInterval * time.Second)
+		time.Sleep(configs.MulticastListenRetryInterval * time.Second)
 	}
 
 }

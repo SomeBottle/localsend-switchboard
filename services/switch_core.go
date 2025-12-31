@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	"github.com/somebottle/localsend-switch/utils"
 )
@@ -119,7 +119,7 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 		return
 	}
 	// 定时器
-	ticker := time.NewTicker(constants.LOCAL_CLIENT_BROADCAST_INTERVAL * time.Second)
+	ticker := time.NewTicker(time.Duration(configs.GetLocalClientBroadcastInterval()) * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -161,7 +161,7 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 		}, respChan
 	}
 	// 定时器
-	ticker := time.NewTicker(constants.LOCAL_CLIENT_ALIVE_CHECK_INTERVAL * time.Second)
+	ticker := time.NewTicker(time.Duration(configs.GetLocalClientAliveCheckInterval()) * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -241,7 +241,7 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 // errChan: 致命错误通道
 func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort string, sigCtx context.Context, multicastChan <-chan *entities.SwitchMessage, localSendPort string, errChan chan<- error) {
 	// 通过 TCP 传输的交换数据通道
-	switchDataChan := make(chan *entities.SwitchMessage, constants.SwitchDataReceiveChanSize)
+	switchDataChan := make(chan *entities.SwitchMessage, configs.SwitchDataReceiveChanSize)
 	// 维护 TCP 连接的管理器
 	var tcpConnHub *TCPConnectionHub = NewTCPConnectionHub()
 	// 维护待转发交换信息的等候室
@@ -249,7 +249,7 @@ func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort s
 	// 维护本地客户端信息的等候室
 	var localClientLounge *LocalClientLounge = NewLocalClientLounge()
 	// 用来发送 HTTP 请求的通道
-	httpRequestChan := make(chan *entities.HTTPJsonRequest, constants.HTTPClientWorkerCount*2)
+	httpRequestChan := make(chan *entities.HTTPJsonRequest, configs.HTTPClientWorkerCount*2)
 	// 清理
 	defer func() {
 		localClientLounge.Close()
@@ -262,7 +262,7 @@ func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort s
 	// 连接到另一个 switch 节点
 	go connectPeer(peerAddr, peerPort, tcpConnHub, switchDataChan, errChan, sigCtx)
 	// 启动 HTTP 请求发送器 (多个 worker)
-	for range constants.HTTPClientWorkerCount {
+	for range configs.HTTPClientWorkerCount {
 		go setUpHTTPSender(httpRequestChan, sigCtx)
 	}
 	// 启动交换数据转发器

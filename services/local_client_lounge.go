@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 )
 
@@ -18,10 +18,10 @@ type LocalClientInfoWithTTL struct {
 
 // LocalClientLounge 存放本地 LocalSend 客户端信息
 type LocalClientLounge struct {
-	mutex           sync.Mutex                         // 保护 clientInfos 的并发访问
-	clientInfos     map[uint16]*LocalClientInfoWithTTL // key: 本地客户端监听的端口
-	closeSignal     chan struct{}                      // 关闭信号，让相应协程退出
-	closed          bool                               // 标记是否关闭
+	mutex       sync.Mutex                         // 保护 clientInfos 的并发访问
+	clientInfos map[uint16]*LocalClientInfoWithTTL // key: 本地客户端监听的端口
+	closeSignal chan struct{}                      // 关闭信号，让相应协程退出
+	closed      bool                               // 标记是否关闭
 }
 
 // NewLocalClientLounge 创建一个新的本地客户端信息等候室
@@ -64,7 +64,7 @@ func (lcl *LocalClientLounge) Add(info *entities.LocalSendClientInfo) {
 	}
 	lcl.clientInfos[info.Port] = &LocalClientInfoWithTTL{
 		info:     info,
-		expireAt: time.Now().Add(constants.LOCAL_CLIENT_INFO_CACHE_LIFETIME * time.Second), // 更新信息有效期
+		expireAt: time.Now().Add(time.Duration(configs.GetLocalClientInfoCacheLifetime()) * time.Second), // 更新信息有效期
 	}
 }
 

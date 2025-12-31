@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	switchdata "github.com/somebottle/localsend-switch/generated/switchdata/v1"
 	"github.com/somebottle/localsend-switch/utils"
@@ -48,12 +48,12 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 	}()
 	// 设置连接的一些传输层属性
 	conn.SetKeepAlive(true)
-	conn.SetKeepAlivePeriod(constants.TCPConnHeartbeatInterval * time.Second)
+	conn.SetKeepAlivePeriod(configs.TCPConnHeartbeatInterval * time.Second)
 	// 接收数据
-	buf := make([]byte, constants.TCPSocketReadBufferSize)
+	buf := make([]byte, configs.TCPSocketReadBufferSize)
 	for {
 		// 设置读取超时，超过心跳时间没有数据就断开连接
-		conn.SetReadDeadline(time.Now().Add(constants.TCPConnHeartbeatInterval * time.Second))
+		conn.SetReadDeadline(time.Now().Add(configs.TCPConnHeartbeatInterval * time.Second))
 		// 每组数据传输格式: [ 1 字节的数据类型 | 4 字节的大端数据长度 | 数据 ]
 
 		// 1 字节的数据类型
@@ -78,7 +78,7 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 				// 读取长度失败，可能是连接出错
 				return
 			}
-			if dataLength > constants.TCPSocketReadBufferSize {
+			if dataLength > configs.TCPSocketReadBufferSize {
 				// 数据长度超过缓冲区大小，直接丢弃连接
 				return
 			}
@@ -115,11 +115,11 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 // sigCtx: 中断信号上下文，用于优雅关闭连接
 func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.SwitchMessage, sigCtx context.Context) {
 	// 用于定时发心跳包的定时器
-	heartbeatTicker := time.NewTicker(constants.TCPConnHeartbeatSendInterval * time.Second)
+	heartbeatTicker := time.NewTicker(configs.TCPConnHeartbeatSendInterval * time.Second)
 	defer heartbeatTicker.Stop()
 	// 设置连接的一些传输层属性
 	conn.SetKeepAlive(true)
-	conn.SetKeepAlivePeriod(constants.TCPConnHeartbeatInterval * time.Second)
+	conn.SetKeepAlivePeriod(configs.TCPConnHeartbeatInterval * time.Second)
 	// 发送数据
 	for {
 		select {
@@ -139,7 +139,7 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 				continue
 			}
 			// 设置写入超时时间
-			conn.SetWriteDeadline(time.Now().Add(constants.TCPSocketWriteTimeout * time.Second))
+			conn.SetWriteDeadline(time.Now().Add(configs.TCPSocketWriteTimeout * time.Second))
 
 			// 发送数据格式: [ 1 字节的数据类型 | 4 字节的大端数据长度 | 数据 ]
 
@@ -169,7 +169,7 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 			}
 		case <-heartbeatTicker.C:
 			// 发送心跳包
-			conn.SetWriteDeadline(time.Now().Add(constants.TCPSocketWriteTimeout * time.Second))
+			conn.SetWriteDeadline(time.Now().Add(configs.TCPSocketWriteTimeout * time.Second))
 			var heartbeatByte byte = 0x02
 			if err := binary.Write(conn, binary.BigEndian, heartbeatByte); err != nil {
 				if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
@@ -279,13 +279,13 @@ func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub,
 		}
 		// 意外退出，继续重试
 		retryCount++
-		if retryCount > constants.SwitchPeerConnectMaxRetries {
+		if retryCount > configs.SwitchPeerConnectMaxRetries {
 			// 重试次数过多
-			errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", constants.SwitchPeerConnectMaxRetries, peerAddr, peerPort)
+			errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", configs.SwitchPeerConnectMaxRetries, peerAddr, peerPort)
 			return
 		}
-		slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", constants.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", constants.SwitchPeerConnectMaxRetries)
-		time.Sleep(constants.SwitchPeerConnectRetryInterval * time.Second)
+		slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", configs.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", configs.SwitchPeerConnectMaxRetries)
+		time.Sleep(configs.SwitchPeerConnectRetryInterval * time.Second)
 	}
 }
 
@@ -341,7 +341,7 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 			slog.Info("TCP Server listening on port", "port", servPort)
 			// 接受连接
 			for {
-				tcpListener.SetDeadline(time.Now().Add(constants.TCPAcceptTimeout * time.Second))
+				tcpListener.SetDeadline(time.Now().Add(configs.TCPAcceptTimeout * time.Second))
 				conn, err := tcpListener.AcceptTCP()
 				if err != nil {
 					if sigCtx.Err() != nil {
@@ -373,6 +373,6 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 		}
 
 		slog.Info("Restarting TCP Server", "previousError", err)
-		time.Sleep(constants.TCPServerRestartInterval * time.Second)
+		time.Sleep(configs.TCPServerRestartInterval * time.Second)
 	}
 }

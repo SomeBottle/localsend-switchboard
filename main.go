@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
-	"log/slog"
 
-	"github.com/somebottle/localsend-switch/constants"
+	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
 	"github.com/somebottle/localsend-switch/services"
 	"github.com/somebottle/localsend-switch/utils"
@@ -22,7 +23,7 @@ func main() {
 	defer stop()
 	// ------------ 先读取配置
 	localSendMulticastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR") // LocalSend 组播地址
-	localSendPort := os.Getenv("LOCALSEND_SERVER_PORT") // LocalSend 组播 / HTTP 端口
+	localSendPort := os.Getenv("LOCALSEND_SERVER_PORT")             // LocalSend 组播 / HTTP 端口
 	peerAddr := os.Getenv("LOCALSEND_SWITCH_PEER_ADDR")
 	peerPort := os.Getenv("LOCALSEND_SWITCH_PEER_PORT")
 	servPort := os.Getenv("LOCALSEND_SWITCH_SERV_PORT")
@@ -31,6 +32,8 @@ func main() {
 	if logDebugFlag == "1" {
 		logDebug = true
 	}
+	clientBroadcastIntervalStr := os.Getenv("LOCALSEND_SWITCH_CLIENT_BROADCAST_INTERVAL")    // 向所有 peer switch 广播本地客户端的间隔
+	clientAliveCheckIntervalStr := os.Getenv("LOCALSEND_SWITCH_CLIENT_ALIVE_CHECK_INTERVAL") // 检测本地客户端存活的间隔
 
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
@@ -38,7 +41,9 @@ func main() {
 	flag.StringVar(&servPort, "serv-port", servPort, "Service port (same as peer port if not specified)") // 本地 TCP 服务监听端口
 	flag.StringVar(&localSendMulticastAddr, "ls-addr", localSendMulticastAddr, "LocalSend (Multicast) address")
 	flag.StringVar(&localSendPort, "ls-port", localSendPort, "LocalSend (Multicast / HTTP) port")
-	flag.BoolVar(&logDebug,"debug",logDebug,"Enable debug logging")
+	flag.BoolVar(&logDebug, "debug", logDebug, "Enable debug logging")
+	flag.StringVar(&clientBroadcastIntervalStr, "client-broadcast-interval", clientBroadcastIntervalStr, "The interval in seconds for broadcasting local clients to all peer switches")
+	flag.StringVar(&clientAliveCheckIntervalStr, "client-alive-check-interval", clientAliveCheckIntervalStr, "The interval in seconds for checking local client aliveness")
 
 	flag.Parse()
 
@@ -47,19 +52,37 @@ func main() {
 	if logDebug {
 		logLevel = slog.LevelDebug
 	}
-	logger:=slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
 
-	// 没有配置就用默认值
+	// ------------ 配置默认值以及配置检查
+	if clientBroadcastIntervalStr != "" {
+		clientBroadcastInterval, err := strconv.ParseInt(clientBroadcastIntervalStr, 10, 32)
+		if err != nil || clientBroadcastInterval <= 0 {
+			slog.Error("Invalid time interval for 'client-broadcast-interval', should be a positive integer", "input", clientBroadcastIntervalStr, "error", err)
+		}
+		configs.SetLocalClientBroadcastInterval(int(clientBroadcastInterval))
+	}
+	slog.Debug("Local client broadcast interval (seconds)", "interval", configs.GetLocalClientBroadcastInterval())
+
+	if clientAliveCheckIntervalStr != "" {
+		clientAliveCheckInterval, err := strconv.ParseInt(clientAliveCheckIntervalStr, 10, 32)
+		if err != nil || clientAliveCheckInterval <= 0 {
+			slog.Error("Invalid time interval for 'client-alive-check-interval', should be a positive integer", "input", clientAliveCheckIntervalStr, "error", err)
+		}
+		configs.SetLocalClientAliveCheckInterval(int(clientAliveCheckInterval))
+	}
+	slog.Debug("Local client alive check interval (seconds)", "interval", configs.GetLocalClientAliveCheckInterval())
+
 	if localSendMulticastAddr == "" {
-		localSendMulticastAddr = constants.LocalSendDefaultMulticastIPv4
+		localSendMulticastAddr = configs.LocalSendDefaultMulticastIPv4
 		slog.Debug("Multicast address not provided, using default value: " + localSendMulticastAddr)
 	}
 
 	if localSendPort == "" {
-		localSendPort = constants.LocalSendDefaultPort
+		localSendPort = configs.LocalSendDefaultPort
 		slog.Debug("Multicast port not provided, using default value: " + localSendPort)
 	}
 
@@ -113,7 +136,7 @@ func main() {
 	// ------------ 加入组播组，接收 LocalSend 的发现 UDP 包
 	// 相关协议文档: https://github.com/localsend/protocol
 	// 本地组播数据转交通道
-	multicastChan := make(chan *entities.SwitchMessage, constants.MulticastChanSize)
+	multicastChan := make(chan *entities.SwitchMessage, configs.MulticastChanSize)
 	// 出现严重异常时的通知通道
 	errChan := make(chan error)
 	go services.ListenLocalSendMulticast(nodeId, network, localSendMulticastAddr, localSendPort, outBoundInterface, sigCtx, multicastChan, errChan)
