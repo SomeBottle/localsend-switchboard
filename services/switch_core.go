@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -58,7 +59,7 @@ func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalC
 				if switchMsg.Payload.DiscoveryTtl <= 0 {
 					continue
 				}
-				fmt.Printf("[DEBUG] Forwarding switch message %+v to %s\n", switchMsg, cwc.Conn.RemoteAddr().String())
+				slog.Debug("Forwarding switch message", "message", switchMsg, "to", cwc.Conn.RemoteAddr().String())
 				// 把交换信息发送到对应的发送通道
 				cwc.SendChan <- switchMsg
 			}
@@ -66,17 +67,17 @@ func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalC
 			var remoteIP net.IP = net.ParseIP(switchMsg.Payload.OriginalAddr)
 			if remoteIP == nil {
 				// 无法解析包的原始 IP 地址，包无效
-				fmt.Printf("Warning: failed to parse original address from switch message: %s\n", switchMsg.Payload.OriginalAddr)
+				slog.Debug("Warning: failed to parse original address from switch message, ignored", "address", switchMsg.Payload.OriginalAddr)
 				continue
 			}
 			// 每个交换信息，只要其**发起方**不是本机，就同时对其**发起地址**发送注册请求
 			// 对其发起地址: 发送本机的 LocalSend 客户端信息
 			if !remoteIP.Equal(selfIp) {
-				fmt.Printf("[DEBUG] Received non-local client info: %+v\n", switchMsg.Payload)
+				slog.Debug("Received non-local client info", "message", switchMsg.Payload)
 				// 转换为 LocalSend 客户端信息
 				remoteClientInfo, err := utils.SwitchMessageToLocalSendClientInfo(switchMsg)
 				if err != nil {
-					fmt.Printf("Warning: failed to convert switch message to local client info for HTTP request: %v\n", err)
+					slog.Debug("Warning: failed to convert switch message to local client info for HTTP request, ignored", "error", err)
 					continue
 				}
 
@@ -85,12 +86,12 @@ func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalC
 					// 序列化为 JSON
 					localJsonPayload, err := json.Marshal(localClientInfo)
 					if err != nil {
-						fmt.Printf("Warning: failed to serialize local client info to JSON for HTTP request: %v\n", err)
+						slog.Debug("Warning: failed to serialize local client info to JSON for HTTP request, ignored", "error", err)
 						continue
 					}
 					// 在远端客户端注册本地客户端信息
 					remoteHttpReq := makeHTTPRequest(remoteIP, remoteClientInfo.Port, remoteClientInfo.Protocol, localJsonPayload)
-					fmt.Printf("[DEBUG] Register local client on %s\n", remoteHttpReq.URL)
+					slog.Info("Register local client on remote node", "url", remoteHttpReq.URL)
 					// 发送 HTTP 请求
 					select {
 					case httpRequestChan <- remoteHttpReq:
@@ -114,7 +115,7 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 	// 获得本机 IP
 	selfIp, err := utils.GetOutboundIP()
 	if err != nil {
-		fmt.Printf("Error getting outbound IP address in proactive broadcaster: %v\n", err)
+		slog.Error("Error getting outbound IP address in proactive broadcaster", "error", err)
 		return
 	}
 	// 定时器
@@ -127,7 +128,7 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 			return
 		case <-ticker.C:
 			// 定时广播
-			fmt.Println("[DEBUG] Proactively broadcasting local client info to connected switch nodes")
+			slog.Debug("Proactively broadcasting local client info to connected switch nodes")
 			// 先获得本地客户端信息列表
 			for localClientInfo := range localClientLounge.SyncGet() {
 				localSwitchMsg := utils.PackLocalSendClientInfoIntoSwitchMessage(localClientInfo, nodeId, globalDiscoverySeq.Load(), selfIp)
@@ -169,7 +170,7 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 			return
 		case <-ticker.C:
 			// 定时探测
-			fmt.Println("[DEBUG] Proactively checking local client alive status")
+			slog.Debug("Proactively checking local client alive status")
 			// 同时在 http 和 https 协议上探测
 			httpReq, httpRespChan := makeProbeRequest(localSendPort, "http")
 			httpsReq, httpsRespChan := makeProbeRequest(localSendPort, "https")
@@ -198,7 +199,7 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 			}
 			if respHttp == nil && respHttps == nil {
 				// 探测不到本地客户端存活
-				fmt.Println("[DEBUG] Local client inactive.")
+				slog.Debug("Local client inactive")
 				continue
 			}
 			// 判断协议
@@ -210,20 +211,20 @@ func setUpClientAliveChecker(localSendPort string, localClientLounge *LocalClien
 			// 解析响应体
 			var localClientInfo entities.LocalSendClientInfo
 			if err := json.Unmarshal(respHttps.Body, &localClientInfo); err != nil {
-				fmt.Printf("Warning: failed to parse local client info from probe response: %v\n", err)
+				slog.Debug("Warning: failed to parse local client info from probe response, ignored", "error", err)
 				continue
 			}
 			// 值得注意的是 /v2/info 接口会缺失 Port 和 Protocol 字段，需要补全
 			uint16Port, err := utils.ParsePort(localSendPort)
 			if err != nil {
-				fmt.Printf("Warning: failed to parse local send port string to uint16: %v\n", err)
+				slog.Debug("Warning: failed to parse local send port string to uint16, ignored", "error", err)
 				continue
 			}
 			localClientInfo.Port = uint16Port
 			localClientInfo.Protocol = protocol
 			// 加入等候室
 			localClientLounge.Add(&localClientInfo)
-			fmt.Printf("[DEBUG] Local client active: %+v\n", localClientInfo)
+			slog.Info("Local client active", "info", localClientInfo)
 		}
 	}
 }
@@ -277,20 +278,21 @@ func SetUpSwitchCore(nodeId string, peerAddr string, peerPort string, servPort s
 		case msg := <-multicastChan:
 			// 来自组播监听器的交换数据
 			if err := switchLounge.Write(msg); err != nil {
-				fmt.Printf("Warning: failed to write switch message from multicast to lounge: %v\n", err)
+				slog.Debug("Warning: failed to write switch message from multicast to lounge, ignored", "message", msg, "error", err)
+				continue
 			}
 			// 交换数据转换为客户端信息存入本地客户端信息等候室
 			// 注意 multicastChan 传递过来的消息一定是本机 LocalSend 客户端发出的
 			localSendClientInfo, err := utils.SwitchMessageToLocalSendClientInfo(msg)
 			if err != nil {
-				fmt.Printf("Warning: failed to convert switch message to local client info: %v\n", err)
+				slog.Debug("Warning: failed to convert switch message to local client info, ignored", "message", msg, "error", err)
 				continue
 			}
 			localClientLounge.Add(localSendClientInfo)
 		case msg := <-switchDataChan:
 			// 来自 TCP 连接的交换数据
 			if err := switchLounge.Write(msg); err != nil {
-				fmt.Printf("Warning: failed to write switch message from TCP to lounge: %v\n", err)
+				slog.Debug("Warning: failed to write switch message from TCP to lounge, ignored", "message", msg, "error", err)
 			}
 		case <-sigCtx.Done():
 			// 收到退出信号

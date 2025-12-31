@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
+	"log/slog"
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
@@ -46,7 +46,7 @@ func setUpHTTPSender(sendReqs <-chan *entities.HTTPJsonRequest, sigCtx context.C
 			case "POST":
 				request, err = http.NewRequest("POST", req.URL, bytes.NewReader(req.JsonBody))
 				if err != nil {
-					fmt.Println("Failed to create HTTP POST request:", err)
+					slog.Error("Failed to create HTTP POST request", "error", err)
 					continue
 				}
 				// 发送的是 JSON 数据
@@ -54,16 +54,16 @@ func setUpHTTPSender(sendReqs <-chan *entities.HTTPJsonRequest, sigCtx context.C
 			case "GET":
 				request, err = http.NewRequest("GET", req.URL, nil)
 				if err != nil {
-					fmt.Println("Failed to create HTTP GET request:", err)
+					slog.Error("Failed to create HTTP GET request", "error", err)
 					continue
 				}
 			default:
-				fmt.Printf("Warning: unsupported HTTP method %s for request %+v\n", req.Method, req)
+				slog.Warn("Unsupported HTTP method", "method", req.Method, "request", req)
 				continue
 			}
 			response, err := httpClient.Do(request)
 			if err != nil {
-				fmt.Println("Failed to send HTTP request:", err)
+				slog.Debug("Failed to send HTTP request", "error", err)
 				if req.RespChan != nil {
 					// 响应 nil
 					req.RespChan <- nil
@@ -71,16 +71,16 @@ func setUpHTTPSender(sendReqs <-chan *entities.HTTPJsonRequest, sigCtx context.C
 				continue
 			}
 			if response.StatusCode != http.StatusOK {
-				fmt.Println("Received non-OK HTTP response:", response.Status)
+				slog.Debug("Received non-OK HTTP response", "status", response.Status)
 			} else {
-				fmt.Println("[DEBUG] Successfully sent HTTP request to", req.URL)
+				slog.Debug("Successfully sent HTTP request", "url", req.URL)
 			}
 			if req.RespChan != nil {
 				// 如果有响应通道就读取响应体并发送回去
 				respBody, err := io.ReadAll(io.LimitReader(response.Body, constants.HTTPResponseBodyMaxSize))
 				_ = response.Body.Close()
 				if err != nil {
-					fmt.Println("Failed to read HTTP response body:", err)
+					slog.Error("Failed to read HTTP response body", "error", err)
 					continue
 				}
 				httpResp := &entities.HTTPResponse{

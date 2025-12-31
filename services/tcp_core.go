@@ -1,6 +1,6 @@
 package services
 
-// TCP 服务器模块，包括连接处理
+// TCP 核心模块，包括连接处理和维持，TCP 服务启动等
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -100,7 +101,7 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 			}
 		default:
 			// 未知的数据类型，也是直接丢弃连接
-			fmt.Printf("Unknown data type received over TCP: 0x%02X, closing connection\n", dataType)
+			slog.Debug("Unknown data type received over TCP, closing connection", "dataType", dataType)
 			return
 		}
 	}
@@ -134,7 +135,7 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 			payload, err := proto.Marshal(msg.Payload)
 			if err != nil {
 				// 序列化失败，忽略该数据
-				fmt.Printf("Failed to marshal switch message %s for sending over TCP: %v\n", msg.Payload, err)
+				slog.Debug("Failed to marshal switch message for sending over TCP", "message", msg.Payload, "error", err)
 				continue
 			}
 			// 设置写入超时时间
@@ -150,20 +151,20 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 					return
 				}
 				// 发送类型失败，可能是连接出错
-				fmt.Printf("Failed to send data type over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				slog.Debug("Failed to send data type over TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
 				continue
 			}
 			// 4 字节的大端数据长度
 			dataLength := uint32(len(payload))
 			if err := binary.Write(conn, binary.BigEndian, dataLength); err != nil {
 				// 发送长度失败，可能是连接出错
-				fmt.Printf("Failed to send data length over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				slog.Debug("Failed to send data length over TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
 				continue
 			}
 			// 发送数据
 			if err := utils.WriteAllBytes(conn, payload); err != nil {
 				// 发送数据失败，可能是连接出错
-				fmt.Printf("Failed to send data over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				slog.Debug("Failed to send data over TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
 				continue
 			}
 		case <-heartbeatTicker.C:
@@ -176,7 +177,7 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 					return
 				}
 				// 发送心跳包失败，可能是连接出错
-				fmt.Printf("Failed to send heartbeat over TCP connection to %s: %v\n", conn.RemoteAddr().String(), err)
+				slog.Debug("Failed to send heartbeat over TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
 				continue
 			}
 		}
@@ -208,7 +209,7 @@ func handleTCPConnection(conn *net.TCPConn, sendDataChan <-chan *entities.Switch
 func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub, switchDataChan chan *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
 	// 没有配置 peerAddr 或 peerPort 则不启动转发协程
 	if peerAddr == "" || peerPort == "" {
-		fmt.Println("Peer address or port not provided, switch forwarder will not be started.")
+		slog.Info("Peer address or port not provided, switch forwarder will not be started")
 		return
 	}
 	// 建立 TCP 连接重试计数器
@@ -255,15 +256,15 @@ func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub,
 			sendChan, err := tcpConnHub.AddConnection(conn)
 			if err != nil {
 				// 添加失败，说明连接已存在或者超过最大连接数，这种情况下退出
-				fmt.Printf("Failed to create TCP connection to peer switch at %s:%s: %v\n", peerAddr, peerPort, err)
+				slog.Warn("Failed to create TCP connection to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "error", err)
 				return true, nil
 			}
-			fmt.Printf("Established TCP connection to peer switch at %s:%s\n", peerAddr, peerPort)
+			slog.Info("Established TCP connection to peer switch", "peerAddr", peerAddr, "peerPort", peerPort)
 			// 处理并维持连接
 			handleTCPConnection(conn, sendChan, switchDataChan, tcpConnHub, sigCtx)
 			if sigCtx.Err() != nil {
 				// 收到退出信号，优雅退出
-				fmt.Printf("Peer connection to %s:%s exiting gracefully...\n", peerAddr, peerPort)
+				slog.Debug("Peer connection exiting gracefully", "peerAddr", peerAddr, "peerPort", peerPort)
 				return true, nil
 			}
 			// 连接意外断开，继续重试
@@ -283,7 +284,7 @@ func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub,
 			errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", constants.SwitchPeerConnectMaxRetries, peerAddr, peerPort)
 			return
 		}
-		fmt.Printf("Retrying to connect to peer switch at %s:%s in %d seconds... (retry %d/%d)\n", peerAddr, peerPort, constants.SwitchPeerConnectRetryInterval, retryCount, constants.SwitchPeerConnectMaxRetries)
+		slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", constants.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", constants.SwitchPeerConnectMaxRetries)
 		time.Sleep(constants.SwitchPeerConnectRetryInterval * time.Second)
 	}
 }
@@ -298,7 +299,7 @@ func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub,
 func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan<- *entities.SwitchMessage, errChan chan<- error, sigCtx context.Context) {
 	if servPort == "" {
 		// 未配置服务端口，不启动 TCP 服务
-		fmt.Println("Service port not provided, TCP server will not be started.")
+		slog.Info("Service port not provided, TCP server will not be started")
 		return
 	}
 	for {
@@ -337,7 +338,7 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 					}
 				}
 			}()
-			fmt.Printf("TCP Server listening on port %s\n", servPort)
+			slog.Info("TCP Server listening on port", "port", servPort)
 			// 接受连接
 			for {
 				tcpListener.SetDeadline(time.Now().Add(constants.TCPAcceptTimeout * time.Second))
@@ -345,7 +346,7 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 				if err != nil {
 					if sigCtx.Err() != nil {
 						// 收到中断信号，优雅退出
-						fmt.Printf("TCP Server exiting gracefully...\n")
+						slog.Debug("TCP Server exiting gracefully")
 						return true, nil
 					}
 					continue
@@ -354,13 +355,13 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 				sendChan, err := tcpConnHub.AddConnection(conn)
 				if err != nil {
 					// 添加失败，说明连接已存在或者超过最大连接数
-					fmt.Printf("Failed to add TCP connection from %s: %v\n", conn.RemoteAddr().String(), err)
+					slog.Warn("Failed to add TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
 					conn.Close()
 					continue
 				}
 				// 处理连接
 				go handleTCPConnection(conn, sendChan, dataChan, tcpConnHub, sigCtx)
-				fmt.Printf("[DEBUG] Accepted TCP connection from %s\n", conn.RemoteAddr().String())
+				slog.Info("Accepted TCP connection", "remoteAddr", conn.RemoteAddr().String())
 			}
 		}()
 		if exit {
@@ -371,7 +372,7 @@ func setUpTCPServer(servPort string, tcpConnHub *TCPConnectionHub, dataChan chan
 			break
 		}
 
-		fmt.Printf("Restarting TCP Server...\nPrevious error: %v\n", err)
+		slog.Info("Restarting TCP Server", "previousError", err)
 		time.Sleep(constants.TCPServerRestartInterval * time.Second)
 	}
 }

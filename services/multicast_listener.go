@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"log/slog"
 
 	"github.com/somebottle/localsend-switch/constants"
 	"github.com/somebottle/localsend-switch/entities"
@@ -95,7 +96,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 					return
 				}
 			}()
-			fmt.Printf("Joined Multicast Group: %s:%s\n", localSendAddr, localSendPort)
+			slog.Info("Joined Multicast Group", "address", localSendAddr, "port", localSendPort)
 			for {
 				// 设置超时时间防止阻塞过久
 				if err := packetConn.SetReadDeadline(time.Now().Add(constants.MulticastReadTimeout * time.Second)); err != nil {
@@ -112,7 +113,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 					}
 					// 如果是被中断，退出
 					if sigCtx.Err() != nil {
-						fmt.Printf("Multicast listener exiting gracefully...\n")
+						slog.Debug("Multicast listener exiting gracefully...\n")
 						return true, nil
 					}
 					// 否则重启服务
@@ -120,10 +121,10 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 				}
 				// 解析数据
 				discoveryMsg := switchdata.DiscoveryMessage{}
-				fmt.Printf("[DEBUG] Received RAW UDP packet from %s - Data: %s\n", remoteAddr.String(), string(buf[:n]))
+				slog.Debug("Received UDP packet", "from", remoteAddr.String(), "data", string(buf[:n]))
 				// 因为 discoveryMsg 是 protobuf 格式，所以用 protojson 解析
 				if err := jsonUnmarshaler.Unmarshal(buf[:n], &discoveryMsg); err != nil {
-					fmt.Printf("Warning: Failed to unmarshal discovery message from %s: %v\n", remoteAddr.String(), err)
+					slog.Debug("Warning: Failed to unmarshal discovery message, ignored", "from", remoteAddr.String(), "error", err)
 					continue
 				}
 				clientIP := remoteAddr.(*net.UDPAddr).IP
@@ -156,7 +157,7 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 			break
 		}
 
-		fmt.Printf("Restarting multicast listener...\nPrevious error: %v\n", err)
+		slog.Info("Restarting multicast listener", "previousError", err)
 		time.Sleep(constants.MulticastListenRetryInterval * time.Second)
 	}
 
