@@ -19,3 +19,10 @@ func GetExactExecutablePath() (string, error) {
 	}
 	return realExePath, nil
 }
+
+// GetBaseNameWithoutExt 获取路径的文件名（不含扩展名）
+func GetBaseNameWithoutExt(path string) string {
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	return base[:len(base)-len(ext)]
+}

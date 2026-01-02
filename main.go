@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -34,6 +35,9 @@ func main() {
 	}
 	clientBroadcastIntervalStr := os.Getenv("LOCALSEND_SWITCH_CLIENT_BROADCAST_INTERVAL")    // 向所有 peer switch 广播本地客户端的间隔
 	clientAliveCheckIntervalStr := os.Getenv("LOCALSEND_SWITCH_CLIENT_ALIVE_CHECK_INTERVAL") // 检测本地客户端存活的间隔
+	logFilePath := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_PATH")
+	logFileMaxSize := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_SIZE")
+	logFileMaxHistorical := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL")
 
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
@@ -44,7 +48,10 @@ func main() {
 	flag.BoolVar(&logDebug, "debug", logDebug, "Enable debug logging")
 	flag.StringVar(&clientBroadcastIntervalStr, "client-broadcast-interval", clientBroadcastIntervalStr, "The interval in seconds for broadcasting local clients to all peer switches")
 	flag.StringVar(&clientAliveCheckIntervalStr, "client-alive-check-interval", clientAliveCheckIntervalStr, "The interval in seconds for checking local client aliveness")
-	
+	flag.StringVar(&logFilePath, "log-file", logFilePath, "Log file path")
+	flag.StringVar(&logFileMaxSize, "log-file-max-size", logFileMaxSize, "Log file max size in Bytes before rotation")
+	flag.StringVar(&logFileMaxHistorical, "log-file-max-historical", logFileMaxHistorical, "Max number of historical log files to keep")
+
 	// 开机自启选项
 	var autoStart string
 	flag.StringVar(&autoStart, "autostart", "", "Set auto start on system boot, options: 'enable', 'disable'")
@@ -52,40 +59,71 @@ func main() {
 	flag.Parse()
 
 	// ------------ 初始化全局日志记录器
+	// 日志相关配置
+	if logFilePath != "" {
+		configs.SetLogFilePath(logFilePath)
+	}
+	if logFileMaxSize != "" {
+		size, err := strconv.ParseInt(logFileMaxSize, 10, 64)
+		if err != nil || size <= 0 {
+			fmt.Fprintf(os.Stderr, "Invalid log file max size, should be a positive integer: %v\n", err)
+			return
+		}
+		configs.SetLogMaxSizeBytes(size)
+	}
+	if logFileMaxHistorical != "" {
+		count, err := strconv.ParseInt(logFileMaxHistorical, 10, 32)
+		if err != nil || count < 0 {
+			fmt.Fprintf(os.Stderr, "Invalid log file max historical count, should be a non-negative integer: %v\n", err)
+			return
+		}
+		configs.SetLogMaxHistoricalFiles(int(count))
+	}
+	// 日志级别
 	logLevel := slog.LevelInfo
 	if logDebug {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
+	// 日志文件写入器
+	logFileWriter, err := utils.NewLogWriter(configs.GetLogFilePath(), configs.GetLogMaxSizeBytes(), configs.GetLogMaxHistoricalFiles())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set up log file writer: %v\n", err)
+		return
+	}
+	// 同时写入 STDOUT 和日志文件
+	logger := slog.New(slog.NewTextHandler(
+		io.MultiWriter(os.Stdout, logFileWriter),
+		&slog.HandlerOptions{
+			Level: logLevel,
+		},
+	))
 	slog.SetDefault(logger)
 
 	// ------------ 开机自启设置
 	switch autoStart {
-		case "enable":
-			err := utils.SetAutoStart(true)
-			if err != nil {
-				slog.Error("Failed to enable autostart", "error", err)
-				return
-			}
-			// 启动后直接退出
-			slog.Info("Autostart enabled successfully")
+	case "enable":
+		err := utils.SetAutoStart(true)
+		if err != nil {
+			slog.Error("Failed to enable autostart", "error", err)
 			return
-		case "disable":
-			err := utils.SetAutoStart(false)
-			if err != nil {
-				slog.Error("Failed to disable autostart", "error", err)
-				return
-			}
-			// 启动后直接退出
-			slog.Info("Autostart disabled successfully")
+		}
+		// 启动后直接退出
+		slog.Info("Autostart enabled successfully")
+		return
+	case "disable":
+		err := utils.SetAutoStart(false)
+		if err != nil {
+			slog.Error("Failed to disable autostart", "error", err)
 			return
-		case "":
-			// 没有传入就正常启动后续服务
-		default:
-			slog.Error("Invalid value for autostart option, should be 'enable', 'disable' or empty", "input", autoStart)
-			return
+		}
+		// 启动后直接退出
+		slog.Info("Autostart disabled successfully")
+		return
+	case "":
+		// 没有传入就正常启动后续服务
+	default:
+		slog.Error("Invalid value for autostart option, should be 'enable', 'disable' or empty", "input", autoStart)
+		return
 	}
 
 	// ------------ 配置默认值以及配置检查
