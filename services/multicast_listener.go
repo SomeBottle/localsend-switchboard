@@ -3,9 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
-	"log/slog"
 
 	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
@@ -134,12 +134,11 @@ func ListenLocalSendMulticast(nodeId string, networkType string, localSendAddr s
 					continue
 				}
 				discoveryMsg.SwitchId = nodeId
-				discoveryMsg.DiscoverySeq = globalDiscoverySeq.Load()
+				// 序号递增并 +1，原子操作
+				discoveryMsg.DiscoverySeq = globalDiscoverySeq.Add(1) - 1
 				discoveryMsg.DiscoveryTtl = configs.MaxDiscoveryMessageTTL
 				// 在包中塞入原始发送者 IP 地址
 				discoveryMsg.OriginalAddr = clientIP.String()
-				// 序号递增
-				globalDiscoverySeq.Add(1)
 				// 包装成 SwitchMessage
 				switchMsg := &entities.SwitchMessage{
 					SourceAddr: remoteAddr,

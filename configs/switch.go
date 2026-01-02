@@ -13,9 +13,9 @@ const (
 
 var (
 	// 定时广播本地客户端信息的时间间隔，单位为秒
-	localClientBroadcastInterval = 30
+	localClientBroadcastInterval = 15
 	// 定时探测本地客户端存活的时间间隔，单位为秒
-	localClientAliveCheckInterval = 15
+	localClientAliveCheckInterval = 10
 	// 本地客户端信息缓存时间，单位为秒
 	localClientInfoCacheLifetime = 60
 )

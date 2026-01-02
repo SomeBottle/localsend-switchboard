@@ -132,7 +132,7 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 			var numLocalClients, numConnections int = 0, tcpConnHub.NumConnections()
 			for localClientInfo := range localClientLounge.SyncGet() {
 				numLocalClients++
-				localSwitchMsg := utils.PackLocalSendClientInfoIntoSwitchMessage(localClientInfo, nodeId, globalDiscoverySeq.Load(), selfIp)
+				localSwitchMsg := utils.PackLocalSendClientInfoIntoSwitchMessage(localClientInfo, nodeId, globalDiscoverySeq.Add(1)-1, selfIp)
 				// 对每个已连接的节点发送交换消息
 				for _, cwc := range tcpConnHub.GetAllConnections() {
 					localSwitchMsg.Payload.DiscoveryTtl--
