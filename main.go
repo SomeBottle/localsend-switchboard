@@ -24,6 +24,12 @@ func main() {
 	// 中断信号处理
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// 获得进程可执行文件目录，切换到该目录，确保如日志的相对路径能正常解析
+	executableDir, err := utils.GetExactExecutableDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get executable directory: %v\n", err)
+		return
+	}
 	// ------------ 先读取配置
 	localSendMulticastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR") // LocalSend 组播地址
 	localSendPort := os.Getenv("LOCALSEND_SERVER_PORT")             // LocalSend 组播 / HTTP 端口
@@ -40,8 +46,8 @@ func main() {
 	logFilePath := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_PATH")
 	logFileMaxSize := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_SIZE")
 	logFileMaxHistorical := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL")
-
 	switchPeerConnectMaxRetriesStr := os.Getenv("LOCALSEND_SWITCH_PEER_CONNECT_MAX_RETRIES")
+	workingDir := os.Getenv("LOCALSEND_SWITCH_WORK_DIR")
 
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
@@ -56,12 +62,22 @@ func main() {
 	flag.StringVar(&logFileMaxSize, "log-file-max-size", logFileMaxSize, "Log file max size in Bytes before rotation")
 	flag.StringVar(&logFileMaxHistorical, "log-file-max-historical", logFileMaxHistorical, "Max number of historical log files to keep")
 	flag.StringVar(&switchPeerConnectMaxRetriesStr, "peer-connect-max-retries", switchPeerConnectMaxRetriesStr, "Max retries to connect to peer switch before giving up (set to negative number for infinite retries)")
-
+	flag.StringVar(&workingDir, "work-dir", workingDir, "Working directory (default to executable's directory)")
 	// 开机自启选项
 	var autoStart string
 	flag.StringVar(&autoStart, "autostart", "", "Set auto start on system boot, options: 'enable', 'disable'")
 
 	flag.Parse()
+
+	// ------------ 切换工作目录
+	if workingDir == "" {
+		workingDir = executableDir
+	}
+	err = os.Chdir(workingDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to change working directory to %s: %v\n", workingDir, err)
+		return
+	}
 
 	// ------------ 初始化全局日志记录器
 	// 日志相关配置
@@ -104,8 +120,9 @@ func main() {
 	))
 	slog.SetDefault(logger)
 
-	// ----------- 输出版本信息
+	// ----------- 输出版本信息和工作目录
 	slog.Info("LocalSend Switchboard starting...", "version", AppVersion)
+	slog.Info("Working directory", "dir", workingDir)
 
 	// ------------ 开机自启设置
 	switch autoStart {

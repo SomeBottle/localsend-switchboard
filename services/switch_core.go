@@ -128,9 +128,10 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 			return
 		case <-ticker.C:
 			// 定时广播
-			slog.Debug("Proactively broadcasting local client info to connected switch nodes")
 			// 先获得本地客户端信息列表
+			var numLocalClients, numConnections int = 0, tcpConnHub.NumConnections()
 			for localClientInfo := range localClientLounge.SyncGet() {
+				numLocalClients++
 				localSwitchMsg := utils.PackLocalSendClientInfoIntoSwitchMessage(localClientInfo, nodeId, globalDiscoverySeq.Load(), selfIp)
 				// 对每个已连接的节点发送交换消息
 				for _, cwc := range tcpConnHub.GetAllConnections() {
@@ -138,6 +139,7 @@ func setUpProactiveBroadcaster(nodeId string, localClientLounge *LocalClientLoun
 					cwc.SendChan <- localSwitchMsg
 				}
 			}
+			slog.Debug("Proactively broadcasted local client info to connected switch nodes", "numLocalClients", numLocalClients, "numConnections", numConnections)
 		}
 	}
 }

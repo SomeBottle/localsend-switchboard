@@ -2,6 +2,31 @@
 
 A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
 
+## Usage
+
+## Working Directory
+
+The working directory will default to the **executable's directory**.   
+
+* You can specify relative paths for log files, for example:  
+
+    ```bash
+    ./localsend-switch-linux-amd64 --log-file=localsend-switch-logs/latest.log
+    ```
+
+    and the log file will be definitely created here:  
+
+    ```bash
+    somewhere/
+    ├── localsend-switch-logs
+    │   └── latest.log # <- here
+    └── localsend-switch-linux-amd64
+    ```
+
+
+* This is especially useful when `autostart` is enabled, as the program will be started by the system with a different working directory (usually the system directory).  
+* You can also specify a custom working directory using the `--work-dir` command-line argument or the `LOCALSEND_SWITCH_WORK_DIR` environment variable.  
+
 ## Build
 
 0. Generate the protobuf code:
