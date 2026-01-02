@@ -97,7 +97,7 @@ func main() {
 	}
 	// 同时写入 STDOUT 和日志文件
 	logger := slog.New(slog.NewTextHandler(
-		io.MultiWriter(os.Stdout, logFileWriter),
+		io.MultiWriter(logFileWriter, os.Stdout),
 		&slog.HandlerOptions{
 			Level: logLevel,
 		},
