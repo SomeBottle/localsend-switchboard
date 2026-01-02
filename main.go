@@ -39,6 +39,8 @@ func main() {
 	logFileMaxSize := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_SIZE")
 	logFileMaxHistorical := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL")
 
+	switchPeerConnectMaxRetriesStr := os.Getenv("LOCALSEND_SWITCH_PEER_CONNECT_MAX_RETRIES")
+
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
 	flag.StringVar(&peerPort, "peer-port", peerPort, "Peer port (same as service port if not specified)") // 另一个 switch 节点的端口
@@ -51,6 +53,7 @@ func main() {
 	flag.StringVar(&logFilePath, "log-file", logFilePath, "Log file path")
 	flag.StringVar(&logFileMaxSize, "log-file-max-size", logFileMaxSize, "Log file max size in Bytes before rotation")
 	flag.StringVar(&logFileMaxHistorical, "log-file-max-historical", logFileMaxHistorical, "Max number of historical log files to keep")
+	flag.StringVar(&switchPeerConnectMaxRetriesStr, "peer-connect-max-retries", switchPeerConnectMaxRetriesStr, "Max retries to connect to peer switch before giving up (set to negative number for infinite retries)")
 
 	// 开机自启选项
 	var autoStart string
@@ -127,6 +130,14 @@ func main() {
 	}
 
 	// ------------ 配置默认值以及配置检查
+	if switchPeerConnectMaxRetriesStr != "" {
+		switchPeerConnectMaxRetries, err := strconv.ParseInt(switchPeerConnectMaxRetriesStr, 10, 32)
+		if err != nil {
+			slog.Error("Invalid value for 'peer-connect-max-retries'", "input", switchPeerConnectMaxRetriesStr, "error", err)
+		}
+		configs.SetSwitchPeerConnectMaxRetries(int(switchPeerConnectMaxRetries))
+	}
+	slog.Debug("Switch peer connect max retries", "maxRetries", configs.GetSwitchPeerConnectMaxRetries())
 	if clientBroadcastIntervalStr != "" {
 		clientBroadcastInterval, err := strconv.ParseInt(clientBroadcastIntervalStr, 10, 32)
 		if err != nil || clientBroadcastInterval <= 0 {

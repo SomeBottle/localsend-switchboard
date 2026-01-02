@@ -279,12 +279,17 @@ func connectPeer(peerAddr string, peerPort string, tcpConnHub *TCPConnectionHub,
 		}
 		// 意外退出，继续重试
 		retryCount++
-		if retryCount > configs.SwitchPeerConnectMaxRetries {
-			// 重试次数过多
-			errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", configs.SwitchPeerConnectMaxRetries, peerAddr, peerPort)
-			return
+		if configs.GetSwitchPeerConnectMaxRetries() < 0 {
+			// 如果为负数则无限重试
+			slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", configs.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", "unlimited")
+		} else {
+			if retryCount > configs.GetSwitchPeerConnectMaxRetries() {
+				// 重试次数过多
+				errChan <- fmt.Errorf("Exceeded maximum retries (%d) to connect to peer switch at %s:%s", configs.GetSwitchPeerConnectMaxRetries(), peerAddr, peerPort)
+				return
+			}
+			slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", configs.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", configs.GetSwitchPeerConnectMaxRetries())
 		}
-		slog.Info("Retrying to connect to peer switch", "peerAddr", peerAddr, "peerPort", peerPort, "interval", configs.SwitchPeerConnectRetryInterval, "retryCount", retryCount, "maxRetries", configs.SwitchPeerConnectMaxRetries)
 		time.Sleep(configs.SwitchPeerConnectRetryInterval * time.Second)
 	}
 }

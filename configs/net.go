@@ -32,8 +32,6 @@ const (
 	MaxDiscoveryMessageTTL = 255
 	// 和对端 switch 建立 TCP 连接的重试间隔
 	SwitchPeerConnectRetryInterval = 3 // 秒
-	// 和对端 switch 建立 TCP 连接的最大重试次数
-	SwitchPeerConnectMaxRetries = 10
 	// TCP 发送通道缓冲区大小
 	TCPSocketSendChanSize = 32
 	// 写入 TCP 数据的超时时间
@@ -45,3 +43,18 @@ const (
 	// HTTP 客户端 Worker 数量
 	HTTPClientWorkerCount = 8
 )
+
+var (
+	// 和对端 switch 建立 TCP 连接的最大重试次数
+	switchPeerConnectMaxRetries = 10
+)
+
+// SetSwitchPeerConnectMaxRetries 设置和对端 switch 建立 TCP 连接的最大重试次数
+func SetSwitchPeerConnectMaxRetries(retries int) {
+	switchPeerConnectMaxRetries = retries
+}
+
+// GetSwitchPeerConnectMaxRetries 获取和对端 switch 建立 TCP 连接的最大重试次数
+func GetSwitchPeerConnectMaxRetries() int {
+	return switchPeerConnectMaxRetries
+}
