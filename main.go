@@ -52,7 +52,7 @@ func main() {
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
 	flag.StringVar(&peerPort, "peer-port", peerPort, "Peer port (same as service port if not specified)") // 另一个 switch 节点的端口
-	flag.StringVar(&servPort, "serv-port", servPort, "Service port (same as peer port if not specified)") // 本地 TCP 服务监听端口
+	flag.StringVar(&servPort, "serv-port", servPort, "Service port to listen for incoming TCP connections from peer switch nodes.") // 本地 TCP 服务监听端口
 	flag.StringVar(&localSendMulticastAddr, "ls-addr", localSendMulticastAddr, "LocalSend (Multicast) address")
 	flag.StringVar(&localSendPort, "ls-port", localSendPort, "LocalSend (Multicast / HTTP) port")
 	flag.BoolVar(&logDebug, "debug", logDebug, "Enable debug logging")
