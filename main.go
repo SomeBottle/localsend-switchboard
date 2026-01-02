@@ -18,6 +18,8 @@ import (
 	"github.com/somebottle/localsend-switch/utils"
 )
 
+const AppVersion = "1.0.0"
+
 func main() {
 	// 中断信号处理
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -101,6 +103,9 @@ func main() {
 		},
 	))
 	slog.SetDefault(logger)
+
+	// ----------- 输出版本信息
+	slog.Info("LocalSend Switchboard starting...", "version", AppVersion)
 
 	// ------------ 开机自启设置
 	switch autoStart {
