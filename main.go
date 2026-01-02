@@ -220,6 +220,7 @@ func main() {
 			panic(fmt.Sprintf("Exited with error: %v", err))
 		case <-sigCtx.Done():
 			slog.Info("Shutting down gracefully...")
+			logFileWriter.Close()
 			// 等待一会儿以确保所有 goroutine 都能退出
 			time.Sleep(2 * time.Second)
 			return
