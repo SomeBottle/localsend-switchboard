@@ -2,7 +2,11 @@
 
 A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
 
-## Usage
+## Overview
+
+![Issue Illustration](pics/issue_illustration.drawio.png)  
+
+## CLI Usage
 
 ```bash
 ./localsend-switch-windows-amd64.exe -h # Show help message
@@ -33,7 +37,19 @@ A lightweight utility to help LocalSend's device discovery in VLAN-segmented loc
 
 ### Log Files
 
-<!--主要讲文件路径和轮转日志文件名-->
+Log files are rotated according to the configuration. By default, the log file path is `localsend-switch-logs/latest.log`. After rotation, the log files are also stored **in the same directory**, with filename pattern `<log_name>_rotated.<number>.log`, for example:
+
+```bash
+localsend-switch-logs/
+├── latest.log
+├── latest_rotated.1.log
+├── latest_rotated.2.log
+├── latest_rotated.3.log
+├── latest_rotated.4.log
+└── latest_rotated.5.log
+```
+
+Here, `latest.log` is the current log file, `latest_rotated.1.log` is the most recently rotated log file, and `latest_rotated.5.log` is the oldest log file currently retained (`--log-file-max-historical=5`).   
 
 ### Working Directory
 
