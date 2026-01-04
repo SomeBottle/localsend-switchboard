@@ -5,9 +5,9 @@ package services
 
 import (
 	"container/heap"
+	"errors"
 	"sync"
 	"time"
-	"errors"
 
 	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
@@ -71,10 +71,10 @@ func NewSwitchLounge() *SwitchLounge {
 	ttlHeap := &TTLHeap{}
 	heap.Init(ttlHeap)
 	switchLounge := SwitchLounge{
-		closeSignal: make(chan struct{}),
-		forwardedIds:  make(map[string]bool),
-		ttlHeap:     ttlHeap,
-		lounge:      make(chan *entities.SwitchMessage, configs.SwitchLoungeSize),
+		closeSignal:  make(chan struct{}),
+		forwardedIds: make(map[string]bool),
+		ttlHeap:      ttlHeap,
+		lounge:       make(chan *entities.SwitchMessage, configs.SwitchLoungeSize),
 	}
 	// 过期 ID 清理协程
 	go func() {
@@ -122,12 +122,17 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 	}
 	// 检查是否已经转发过该发现包
 	if _, exists := sl.forwardedIds[discoveryId]; exists {
-		// 已经转发过，忽略
+		// 已经转发过，忽略，防止重放和环路
 		return nil
 	}
-	// 如果条目过多，放弃写入
+	// 如果条目过多，删除最早的一个条目
 	if len(sl.forwardedIds) >= configs.SwitchIDCacheMaxEntries {
-		return errors.New("Switch lounge relayed ID cache is full")
+		if sl.ttlHeap.Len() == 0 {
+			// 不应该出现这种情况
+			return errors.New("Inconsistent state in Switch Lounge, this should not happen, please check the configuration")
+		}
+		oldest := heap.Pop(sl.ttlHeap).(*TTLHeapItem)
+		delete(sl.forwardedIds, oldest.id)
 	}
 
 	// 没有转发过，则把交换信息写入等候通道
@@ -137,7 +142,7 @@ func (sl *SwitchLounge) Write(msg *entities.SwitchMessage) error {
 		sl.forwardedIds[discoveryId] = true
 		// 加入堆中
 		heap.Push(sl.ttlHeap, &TTLHeapItem{
-			id:        discoveryId,
+			id:       discoveryId,
 			expireAt: time.Now().Add(configs.SwitchIDCacheLifetime * time.Second),
 		})
 	default:

@@ -4,7 +4,7 @@ package configs
 
 const (
 	// 交换消息 ID 缓存的生命周期，单位为秒
-	SwitchIDCacheLifetime = 120
+	SwitchIDCacheLifetime = 300
 	// 交换消息 ID 缓存的最大条目数
 	SwitchIDCacheMaxEntries = 65536
 	// 交换数据等候区大小，即本地停留的发现信息最大条目数，多余的会被丢弃

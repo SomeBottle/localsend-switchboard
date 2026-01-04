@@ -15,7 +15,7 @@ const (
 	// 重试监听组播的间隔时间
 	MulticastListenRetryInterval = 3 // 秒
 	// TCP 最大连接数
-	MaxTCPConnections = 255 * 255
+	MaxTCPConnections = 255 * 10
 	// TCP 连接等待超时时间
 	TCPAcceptTimeout = 30 // 秒
 	// TCP 连接心跳间隔时间

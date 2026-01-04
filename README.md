@@ -4,7 +4,27 @@ A lightweight utility to help LocalSend's device discovery in VLAN-segmented loc
 
 ## Overview
 
+### Problem Illustration
+
 ![Issue Illustration](pics/issue_illustration.drawio.png)  
+> Figure 1: Illustration of the problem. 可以看到 VLAN 0 中的 LocalSend 客户端无法成功发现 VLAN 2 中的 LocalSend 客户端。  
+
+LocalSend 采用 UDP 组播来发现局域网中其他 LocalSend 客户端的存在。然而，像校园网这种大型局域网，通常为了管理和减小广播域规模等目的，会将网络划分为多个 VLAN（虚拟局域网），即使是现实中距离很近的两个设备，也有可能在不同的 VLAN 中。  
+
+* 比如我连接到校园网 WiFi 的电脑和连接有线校园网的实验室打印机电脑，虽然在同一间屋子，但就是处于不同网段的网络中。
+
+不同 VLAN 之间的数据转发依赖于第三层路由设备来实现，不幸的是，LocalSend 向 `224.0.0.x` 组播地址及应用端口发送的 UDP 报文段是**不会被三层设备转发**的，而且其 TTL 值为 `1`，Wireshark 抓包如下：  
+
+![Wireshark Capture](pics/wireshark_captured.png)  
+> Figure 2: Wireshark 抓包显示 LocalSend 发送的组播 UDP 报文段的 TTL 值为 1。  
+
+因此就有了明明两台设备近在咫尺，但是却没法互相发现对方 LocalSend 客户端的尴尬局面 ㄟ( ▔, ▔ )ㄏ。  
+
+更难受的是，这些设备甚至采用的是动态 IP，可能会发生变动，就算我在 LocalSend 中手动添加了对方的 IP 地址，过一段时间后对方分配的 IP 变了就又全部木大了 (⁎⁍̴̛ᴗ⁍̴̛⁎)。  
+
+### Solution
+
+
 
 ## CLI Usage
 
@@ -34,6 +54,8 @@ A lightweight utility to help LocalSend's device discovery in VLAN-segmented loc
 | `--work-dir` | `LOCALSEND_SWITCH_WORK_DIR` | Working directory of the process. | (Default to the [executable's directory](#working-directory)) |
 
 ## Runtime Details
+
+### 通信安全性
 
 ### Log Files
 
@@ -100,3 +122,8 @@ The working directory will default to the **executable's directory**.
     # Make it start without a cmd window (run silently) on Windows
     GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o compiled/localsend-switch-windows-amd64-silent.exe
     ```
+
+## Related Work
+
+* [LocalSend](https://github.com/localsend/localsend)  
+* [LocalSend Protocol](https://github.com/localsend/protocol)  
