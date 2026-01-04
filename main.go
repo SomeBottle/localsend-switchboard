@@ -123,7 +123,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// ----------- 输出版本信息和工作目录
-	slog.Info("LocalSend Switchboard starting...", "version", AppVersion)
+	slog.Info("LocalSend Switch starting...", "version", AppVersion)
 	slog.Info("Working directory", "dir", workingDir)
 
 	// ------------ 开机自启设置

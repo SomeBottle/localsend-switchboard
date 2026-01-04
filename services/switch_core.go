@@ -51,6 +51,18 @@ func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalC
 				// 等候室关闭，退出
 				return
 			}
+			// 该发现包的真实发起地址
+			var remoteIP net.IP = net.ParseIP(switchMsg.Payload.OriginalAddr)
+			if remoteIP == nil {
+				// 无法解析包的原始 IP 地址，包无效
+				slog.Debug("Warning: failed to parse original address from switch message, ignored", "address", switchMsg.Payload.OriginalAddr)
+				continue
+			}
+			if !remoteIP.IsPrivate() {
+				// 且发起地址必须是内网用的私有地址
+				slog.Debug("Warning: original address from switch message is not a private IP, ignored", "address", switchMsg.Payload.OriginalAddr)
+				continue
+			}
 			// 对于每个交换信息，转发给所有连接的节点 (除开其来源节点的连接)
 			for _, cwc := range tcpConnHub.GetConnectionsExcept(switchMsg.SourceAddr) {
 				// 交换信息 TTL 减一
@@ -62,13 +74,6 @@ func setUpPassiveForwarder(SwitchLounge *SwitchLounge, localClientLounge *LocalC
 				slog.Debug("Forwarding switch message", "message", switchMsg, "to", cwc.Conn.RemoteAddr().String())
 				// 把交换信息发送到对应的发送通道
 				cwc.SendChan <- switchMsg
-			}
-			// 该发现包的真实发起地址
-			var remoteIP net.IP = net.ParseIP(switchMsg.Payload.OriginalAddr)
-			if remoteIP == nil {
-				// 无法解析包的原始 IP 地址，包无效
-				slog.Debug("Warning: failed to parse original address from switch message, ignored", "address", switchMsg.Payload.OriginalAddr)
-				continue
 			}
 			// 每个交换信息，只要其**发起方**不是本机，就同时对其**发起地址**发送注册请求
 			// 对其发起地址: 发送本机的 LocalSend 客户端信息

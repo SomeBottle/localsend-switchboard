@@ -13,9 +13,11 @@ import (
 const autostartKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
 
 // 值名称
-const autostartValueName = "LocalSendSwitchboard"
+const autostartValueName = "LocalSendSwitch"
 
 // SetAutoStart 在 Windows 系统上设置开机自启
+//
+// 主要借助 Windows 注册表实现
 //
 // enable: 是否启用自启动
 func SetAutoStart(enable bool) error {
