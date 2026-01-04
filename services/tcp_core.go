@@ -51,6 +51,8 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 	conn.SetKeepAlivePeriod(configs.TCPConnHeartbeatInterval * time.Second)
 	// 接收数据
 	buf := make([]byte, configs.TCPSocketReadBufferSize)
+	// AES 加密工具
+	switchDataCipherUtil := utils.GetSwitchDataCipherUtilInstance()
 	for {
 		// 设置读取超时，超过心跳时间没有数据就断开连接
 		conn.SetReadDeadline(time.Now().Add(configs.TCPConnHeartbeatInterval * time.Second))
@@ -88,10 +90,18 @@ func handleTCPConnectionRecv(conn *net.TCPConn, recvDataChan chan<- *entities.Sw
 				// 读取数据失败，可能是连接出错
 				return
 			}
+			// 解密
+			payload, err := switchDataCipherUtil.Decrypt(payload)
+			if err != nil {
+				// 解密失败，可能数据被篡改，直接丢弃连接
+				slog.Debug("Failed to decrypt switch discovery message received over TCP, corrupted or invalid.", "error", err)
+				return
+			}
 			// 反序列化数据
 			DiscoveryMessage := &switchdata.DiscoveryMessage{}
 			if err := proto.Unmarshal(payload, DiscoveryMessage); err != nil {
 				// 反序列化失败，可能是数据格式错误，直接丢弃连接
+				slog.Debug("Failed to unmarshal switch discovery message received over TCP, corrupted or invalid.", "error", err)
 				return
 			}
 			// 发送数据到通道
@@ -152,6 +162,13 @@ func handleTCPConnectionSend(conn *net.TCPConn, sendDataChan <-chan *entities.Sw
 				}
 				// 发送类型失败，可能是连接出错
 				slog.Debug("Failed to send data type over TCP connection", "remoteAddr", conn.RemoteAddr().String(), "error", err)
+				continue
+			}
+			// 加密数据
+			payload, err = utils.GetSwitchDataCipherUtilInstance().Encrypt(payload)
+			if err != nil {
+				// 加密失败，忽略该数据
+				slog.Error("Failed to encrypt switch message for sending over TCP", "message", msg.Payload, "error", err)
 				continue
 			}
 			// 4 字节的大端数据长度

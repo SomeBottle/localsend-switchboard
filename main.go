@@ -48,6 +48,7 @@ func main() {
 	logFileMaxHistorical := os.Getenv("LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL")
 	switchPeerConnectMaxRetriesStr := os.Getenv("LOCALSEND_SWITCH_PEER_CONNECT_MAX_RETRIES")
 	workingDir := os.Getenv("LOCALSEND_SWITCH_WORK_DIR")
+	secretKey:= os.Getenv("LOCALSEND_SWITCH_SECRET_KEY")
 
 	// 尝试从命令行读取配置
 	flag.StringVar(&peerAddr, "peer-addr", peerAddr, "Peer address")                                      // 另一个 switch 节点的地址
@@ -63,6 +64,7 @@ func main() {
 	flag.StringVar(&logFileMaxHistorical, "log-file-max-historical", logFileMaxHistorical, "Max number of historical log files to keep")
 	flag.StringVar(&switchPeerConnectMaxRetriesStr, "peer-connect-max-retries", switchPeerConnectMaxRetriesStr, "Max retries to connect to peer switch before giving up (set to negative number for infinite retries)")
 	flag.StringVar(&workingDir, "work-dir", workingDir, "Working directory (default to executable's directory)")
+	flag.StringVar(&secretKey, "secret-key", secretKey, "Switch data encryption secret key")
 	// 开机自启选项
 	var autoStart string
 	flag.StringVar(&autoStart, "autostart", "", "Set auto start on system boot, options: 'enable', 'disable'")
@@ -149,6 +151,15 @@ func main() {
 	default:
 		slog.Error("Invalid value for autostart option, should be 'enable', 'disable' or empty", "input", autoStart)
 		return
+	}
+
+	// ----------- 设置交换数据加密密钥
+	configs.SetSwitchDataSecret(secretKey)
+	slog.Debug("Switch data secret key set", "keySet", secretKey != "")
+
+	// 如果没有配置加密密钥则发出警告
+	if configs.GetSwitchDataSecret() == "" {
+		slog.Warn("Secret key (--secret-key) is NOT SET, switch data will be transmitted in plaintext, exposing it to interception and tampering. It is recommended to set a secret key for better security.")
 	}
 
 	// ------------ 配置默认值以及配置检查

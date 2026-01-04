@@ -18,6 +18,8 @@ var (
 	localClientAliveCheckInterval = 10
 	// 本地客户端信息缓存时间，单位为秒
 	localClientInfoCacheLifetime = 60
+	// 交换数据加密密钥
+	switchDataSecret = ""
 )
 
 // SetLocalClientBroadcastInterval 设置定时广播本地客户端信息的时间间隔，单位为秒
@@ -45,4 +47,14 @@ func GetLocalClientAliveCheckInterval() int {
 // GetLocalClientInfoCacheLifetime 获取本地客户端信息缓存时间，单位为秒
 func GetLocalClientInfoCacheLifetime() int {
 	return localClientInfoCacheLifetime
+}
+
+// SetSwitchDataSecret 设置交换数据加密密钥
+func SetSwitchDataSecret(secret string) {
+	switchDataSecret = secret
+}
+
+// GetSwitchDataSecret 获取交换数据加密密钥
+func GetSwitchDataSecret() string {
+	return switchDataSecret
 }

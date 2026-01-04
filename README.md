@@ -115,7 +115,7 @@ The working directory will default to the **executable's directory**.
 
     ```bash
     go build -o localsend-switch
-    # Cross Compilation
+    # Cross compilation
     GOOS=linux GOARCH=amd64 go build -o compiled/localsend-switch-linux-amd64
     GOOS=windows GOARCH=amd64 go build -o compiled/localsend-switch-windows-amd64.exe
     GOOS=darwin GOARCH=amd64 go build -o compiled/localsend-switch-macos-amd64
