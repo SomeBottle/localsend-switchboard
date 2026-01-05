@@ -12,10 +12,11 @@ import (
 const entryFormat = `[Desktop Entry]
 Type=Application
 Name=LocalSend Switch
-Exec=sh -c '%s'
+Exec=%s
 X-GNOME-Autostart-enabled=true
 NoDisplay=true
 Comment=Auto start LocalSend Switch on login
+Terminal=false
 `
 
 // entryFileName  是条目文件名
