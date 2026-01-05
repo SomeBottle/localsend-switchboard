@@ -8,9 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/joho/godotenv"
 
 	"github.com/somebottle/localsend-switch/configs"
 	"github.com/somebottle/localsend-switch/entities"
@@ -19,6 +22,7 @@ import (
 )
 
 const AppVersion = "1.0.0"
+const EnvFileName = "localsend-switch.env"
 
 func main() {
 	// 中断信号处理
@@ -31,6 +35,17 @@ func main() {
 		return
 	}
 	// ------------ 先读取配置
+
+	// 载入环境变量配置文件，读取环境变量
+	envFilePath := filepath.Join(executableDir, EnvFileName)
+	if _, err := os.Stat(envFilePath); err == nil {
+		// 文件存在，载入
+		err = godotenv.Load(envFilePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load environment variables from %s: %v\n", envFilePath, err)
+			return
+		}
+	}
 	localSendMulticastAddr := os.Getenv("LOCALSEND_MULTICAST_ADDR") // LocalSend 组播地址
 	localSendPort := os.Getenv("LOCALSEND_SERVER_PORT")             // LocalSend 组播 / HTTP 端口
 	peerAddr := os.Getenv("LOCALSEND_SWITCH_PEER_ADDR")

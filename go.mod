@@ -10,3 +10,5 @@ require (
 )
 
 require golang.org/x/sys v0.39.0
+
+require github.com/joho/godotenv v1.5.1
