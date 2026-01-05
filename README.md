@@ -32,7 +32,7 @@ LocalSend 采用 UDP 组播来发现局域网中其他 LocalSend 客户端的存
 
 * 详见 [LocalSend Protocol - Discovery](https://github.com/localsend/protocol/blob/main/README.md#3-discovery)  
 
-从官方的协议文档可以看到 LocalSend 的发现包和注册请求的负载中都只有端口信息，没有源 IP 信息，客户端在处理到来的请求时实际上是**从传输层报文段头部获取到 IP 地址**的，因此这个请求必须从 LocalSend 客户端所处的主机上发出。为了实现这点，我可以在每台有 LocalSend 的主机上都额外运行一个工具进程来代发注册请求。  
+从官方的协议文档可以看到 LocalSend 的发现包和注册请求的负载中都只有端口信息，没有源 IP 信息，客户端在处理到来的请求时实际上是**从网络层分组头部获取到 IP 地址**的，因此这个请求必须从 LocalSend 客户端所处的主机上发出。为了实现这点，我可以在每台有 LocalSend 的主机上都额外运行一个工具进程来代发注册请求。  
 
 关键的问题来了，这些工具进程怎么知道局域网内其他 LocalSend 客户端的存在呢？其实我可以借助单播传输来实现这些工具进程之间的通信，从而让它们**互相交换**各自了解的 LocalSend 客户端信息。  
 
