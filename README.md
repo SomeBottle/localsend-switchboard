@@ -1,5 +1,7 @@
 # LocalSend Switch
 
+![LOGO](pics/localsend-switch-logo-small.png)  
+
 A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
 
 ## Overview
@@ -26,9 +28,17 @@ LocalSend 采用 UDP 组播来发现局域网中其他 LocalSend 客户端的存
 
 尽管多播被 VLAN 隔离了，但是咱发现办公区校园网在三层配置上是会转发单播包的，我可以通过单播和不同的 VLAN 中的主机进行通信。  
 
-一个 LocalSend 客户端在尝试发现局域网内其他客户端时，会发送组播 UDP 包来声明自己的存在，其他客户端收到组播包后会通过**单播的 HTTP 请求**来在这个客户端上进行注册。  
+一个 LocalSend 客户端在尝试发现局域网内其他客户端时，会发送组播 UDP 包来声明自己的存在，其他客户端收到组播包后会通过**单播的 HTTP 请求**来在这个客户端上进行注册。因为单播可以跨 VLAN，所以这个注册操作是可以实现的，我可以替 LocalSend 客户端向局域网内的其他 LocalSend 客户端发送注册请求，从而实现跨 VLAN 的发现和注册。
 
 * 详见 [LocalSend Protocol - Discovery](https://github.com/localsend/protocol/blob/main/README.md#3-discovery)  
+
+从官方的协议文档可以看到 LocalSend 的发现包和注册请求的负载中都只有端口信息，没有源 IP 信息，客户端在处理到来的请求时实际上是**从传输层报文段头部获取到 IP 地址**的，因此这个请求必须从 LocalSend 客户端所处的主机上发出。为了实现这点，我可以在每台有 LocalSend 的主机上都额外运行一个工具进程来代发注册请求。  
+
+关键的问题来了，这些工具进程怎么知道局域网内其他 LocalSend 客户端的存在呢？其实我可以借助单播传输来实现这些工具进程之间的通信，从而让它们**互相交换**各自了解的 LocalSend 客户端信息。  
+
+为了解决动态 IP 的问题，我可以把其中一个或多个工具进程作为交换节点**部署在拥有静态 IP 的服务器**上（内网和外网的均可），然后让其他工具进程连接到这些交换节点，当交换过程收敛时，这些工具进程就能互相了解对方所处主机上的 LocalSend 客户端信息了。  
+
+这一套实现下来，LocalSend Switch 这个工具就诞生辣！٩(>௰<)و  
 
 
 
