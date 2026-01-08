@@ -4,6 +4,8 @@
 
 A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
 
+> 目前适配 LocalSend Protocol v2.1  
+
 ## Overview
 
 ### Problem Illustration
@@ -41,7 +43,7 @@ LocalSend 客户端采用 UDP 组播来把自己的存在通告给局域网中�
 这一套实现下来，LocalSend Switch 这个工具就诞生辣！٩(>௰<)و  
 
 ![Switch Strategy Illustration](pics/switch_strategy_illustration.drawio.png)   
-> Figure 3: LocalSend Switch 的工作原理示意图。实线表示的是单播分组的传播路径，虚线表示的是 TCP 逻辑连接；虚线上的箭头对应数据在逻辑上的传播方向。LocalSend 客户端和 Switch 进程的旁边标记了连接端口，只有 VLAN 1 中的 Switch 进程监听了服务端口 `7761`，其余两个 Switch 进程的均为 OS 分配的临时端口；LocalSend 客户端默认监听端口是 `53317`。  
+> Figure 3: LocalSend Switch 的工作原理示意图。实线表示的是单播分组的传播路径，虚线表示的是 TCP 逻辑连接；虚线上的箭头对应数据在逻辑上的传播方向。LocalSend 客户端和 Switch 进程的旁边标记了连接端口，只有 VLAN 1 中的 Switch 进程监听了服务端口 `7761`，其余两个 Switch 进程的均为 OS 分配的临时端口；LocalSend 客户端默认服务端口是 `53317`。  
 
 Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户端信息传播以及注册请求代发的过程。图中，首先 `10.84.0.0/15` 网段中 `10.84.123.223` 这台主机上的 LocalSend 客户端发送了组播包，通告自己的存在，被同一台机器上的 LocalSend Switch 捕获到，Switch 进程随后将该通告信息通过单播发送 (图中标记为 `CLIENT ANNOUNCE`，传播路径为蓝色) 给它所连接的所有 Switch 节点 (图中只有 `192.168.232.47:7761` 这一个)。
 
@@ -49,9 +51,9 @@ Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户�
 
 `47` 主机上 Switch 节点接收到通告的客户端信息后，会将该信息转发至它所连接的**其他** Switch 节点（图中只有 `10.94.23.114:52341`），图中标记为 `FORWARD ANNOUNCE`，传播路径为紫色。因为这台主机上没有 LocalSend 客户端，所以不会有注册请求的代发操作。  
 
-`114` 主机上的 Switch 节点接收到通告信息后，会将该信息发送给它所连接的其他所有 Switch 节点（图中没有其他节点了）；因为这台主机上有 LocalSend 客户端，所以 Switch 节点随后会向通告信息中携带的 LocalSend 客户端地址发送 HTTP 注册请求（图中标记为 `REGISTER CLIENT`，传播路径为棕色），告知对方本地客户端的 IP 和地址，完成注册请求的代发操作。注意这个注册请求是直接由 Switch 发送给 LocalSend 客户端的。  
+`114` 主机上的 Switch 节点接收到通告信息后，会将该信息发送给它所连接的其他所有 Switch 节点（图中没有其他节点了）；因为这台主机上有 LocalSend 客户端，所以 Switch 节点随后会向通告信息中携带的 LocalSend 客户端地址 (图中为 `10.84.123.223:53317` ) 发送 HTTP(S) 注册请求（图中标记为 `REGISTER CLIENT`，传播路径为棕色），告知对方本地客户端的 IP 和地址 (图中为 `10.94.23.114:53317`)，完成注册请求的代发操作。注意这个注册请求是直接由 Switch 发送给 LocalSend 客户端的。  
 
-实际上每个 Switch 节点都有这样的转发功能，你甚至可以串联或者组成树形、星型、网状、混合等拓扑结构。
+实际上每个 Switch 节点都有这样的转发功能，你甚至可以在逻辑上串联或者组成树形、星型、网状、混合等拓扑结构。
 
 
 ## CLI Usage
@@ -84,13 +86,60 @@ Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户�
 
 ## Configure via Environment Variables
 
-(Linux example)
+你可以直接通过环境变量来配置 LocalSend Switch，只需将上表中的环境变量设置为对应的值，写入 `localsend-switch.env` 文件，并放在和可执行文件同目录下即可：  
+
+```bash
+somewhere/
+    ├── localsend-switch.env # <- here
+    └── localsend-switch-linux-amd64
+```
+
+示例 `localsend-switch.env` 文件内容：
+
+```bash
+LOCALSEND_SWITCH_SERV_PORT=7761
+LOCALSEND_SWITCH_SECRET_KEY=el_psy_kongroo
+```
 
 ## Runtime Details
 
+### 本地客户端探测与主动广播
+
+LocalSend Switch 会定期检查本地是否有 LocalSend 客户端在运行，默认间隔为 `10` 秒（可通过 `--client-alive-check-interval` 配置）。  
+
+* 如果本地客户端发送了 UDP 组播包，Switch 会立即捕捉到并判定本地有客户端在运行。
+
+一旦发现本地有 LocalSend 客户端在运行，Switch 会每隔一段时间（默认 `10` 秒，可通过 `--client-broadcast-interval` 配置）向它所连接的所有 Switch 节点广播本地客户端的信息。
+
+这样一来用户不需要手动点击 LocalSend 客户端的设备列表刷新按钮，过一段时间后也能自动发现局域网中的其他客户端。  
+
 ### 交换与注册机制
 
+每一个 LocalSend Switch 都可能担当以下两个角色中的一个或多个：  
+
+1. **信息交换节点**：① 监听 `--serv-port` 指定的端口，等待其他 Switch 节点的 TCP 连接请求，建立连接；② 接收所有 Switch 节点连接上发来的 LocalSend 客户端信息 (每条信息会标记其来源的连接)，存入缓冲区；③ 给所有 Switch 节点连接发送*缓冲区中的 LocalSend 客户端信息*，每一条信息都会发给**除其来源连接以外**的其他连接。
+2. **客户端辅助节点**：① 通过 `--peer-addr` 和 `--peer-port` 的配置连接到另一个 Switch 节点；② 捕捉本地 LocalSend 客户端发出的 UDP 组播包，把包中的本地客户端信息送入缓冲区；③ 在收到其他 Switch 节点转发过来的 LocalSend 客户端信息时，**代替本地客户端向信息中指明的客户端地址发送 HTTP(S) 注册请求**。  
+
+总的来说，*缓冲区中的 LocalSend 客户端信息*来自:  
+
+1. 本地客户端探测。  
+2. 其他 Switch 节点转发过来的客户端信息。  
+
+为了避免交换过程中产生环路，防止每条 LocalSend 客户端信息在 Switch 网络中无限制地传播，每条信息都携带了:  
+
+1. **TTL（存活时间）字段**：每经过一个 Switch 节点，TTL 减 `1`，当 TTL 减到 `0` 时，该信息将不再被转发。默认 TTL 为 `255`。  
+2. **唯一 ID 字段**：每条信息都有一个唯一 ID，由 Switch 节点的临时随机标识以及消息的递增编号组成。每个 Switch 节点都会**避免重复把相同 ID 的客户端信息重复加入缓冲区**。  
+    * 不过每个 ID 在缓存中也是有 TTL 的，默认是 `5` 分钟。  
+
 ### 通信安全性
+
+Switch 节点间的数据传输在 TCP 连接上进行，默认情况下是**明文**的，其中主要是 LocalSend 客户端的主机的地址、设备型号等信息。  
+
+尽管在校园网这种较为可信的局域网中不用担心遭到中间人攻击，而且传输的数据本身也没有那么敏感，但如果中间有的 Switch 节点在外网上，就还是有一定风险的，如中间人可以伪造 LocalSend 客户端信息，诱导其他 Switch 节点向恶意构造的内网客户端地址发送注册请求，从而造成拒绝服务攻击 (DoS)。  
+
+因此建议用 `--secret-key` 配置一个**对称加密密钥**，Switch 节点会利用该密钥对传输的数据进行端侧 **AES 加密**，只有持有相同密钥的节点才能解密和处理这些信息，从而提高通信的安全性（这里不采用非对称加密，本项目的场景和复杂度不太用得上，这样简单易用就行）。
+
+> 💡 另外为了防止接收到恶意构造的 LocalSend 客户端信息，限制每个 Switch 节点仅可向**私有 IP 地址**发送 HTTP(S) 注册请求；上述的每条消息有唯一 ID 也可以一定程度上防止重放攻击。
 
 ### Log Files
 
@@ -133,6 +182,23 @@ The working directory will default to the **executable's directory**.
 
 
 ## Examples
+
+这里构造一个简单的星型拓扑结构，假设局域网有六台主机 A, B, C, D, E, F，其中 D 为服务器，有静态 IP 地址 `192.168.232.47`；其他 A, B, C, E, F 均为 PC 计算机，有 LocalSend 客户端。  
+
+* 在 D 上运行 LocalSend Switch，监听端口 `7761`，作为中心交换节点，启用端侧加密：  
+
+    ```bash
+    ./localsend-switch-linux-amd64 --serv-port=7761 --secret-key=el_psy_kongroo
+    ```
+
+* 在 A, B, C, E, F 上运行 LocalSend Switch，连接到 D：  
+
+    ```bash
+    # Set --peer-connect-max-retries to -1 for unlimited retries in case the server D is temporarily unreachable
+    ./localsend-switch-windows-amd64.exe --peer-addr 192.168.232.47 --peer-port 7761 --secret-key=el_psy_kongroo --peer-connect-max-retries -1
+    ```
+
+
 
 ## Build
 
