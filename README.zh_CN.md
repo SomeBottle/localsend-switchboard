@@ -89,7 +89,7 @@ Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户�
 | `--peer-port` | `LOCALSEND_SWITCH_PEER_PORT` | 对等 Switch 节点的端口。 | (默认使用 `--serv-port`) |
 | `--secret-key` | `LOCALSEND_SWITCH_SECRET_KEY` | 用于与对等 Switch 节点安全通信的对称加密密钥。 |  |
 | `--serv-port` | `LOCALSEND_SWITCH_SERV_PORT` | TCP 服务端口，监听来自对等 Switch 节点的 TCP 连接。 |  |
-| `--work-dir` | `LOCALSEND_SWITCH_WORK_DIR` | 进程的工作目录。 | (默认使用 [可执行文件所在目录](#working-directory)) |
+| `--work-dir` | `LOCALSEND_SWITCH_WORK_DIR` | 进程的工作目录。 | (默认使用 [可执行文件所在目录](#进程工作目录)) |
 
 ## 通过环境变量进行配置
 
