@@ -1,23 +1,23 @@
 # LocalSend Switch
 
-Lang: English | [简体中文](./README.zh_CN.md)
+Lang: [English](./README.md) | 简体中文
 
 ![LOGO](pics/localsend-switch-logo-small.png)  
 
-A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
+用于在 VLAN 划分的局域网中辅助 LocalSend 客户端进行设备发现的简单小工具。  
 
 > 目前适配 LocalSend Protocol v2.1  
 
-## Overview
+## 概述
 
 <details>
 
-<summary>Click to see Problem Illustration and Solution</summary>
+<summary>展开查看问题提出和解决方案</summary>
 
-### Problem Illustration
+### 问题提出
 
 ![Issue Illustration](pics/issue_illustration.drawio.png)  
-> Figure 1: Illustration of the problem. 可以看到 VLAN 0 中的 LocalSend 客户端无法成功发现 VLAN 2 中的 LocalSend 客户端，反之亦然。  
+> Figure 1: 问题示意图。 可以看到 VLAN 0 中的 LocalSend 客户端无法成功发现 VLAN 2 中的 LocalSend 客户端，反之亦然。  
 
 LocalSend 客户端采用 UDP 组播来把自己的存在通告给局域网中其他客户端。然而，像校园网这种大型局域网，通常为了管理和减小广播域规模等目的，会将网络划分为多个 VLAN（虚拟局域网），即使是现实中距离很近的两个设备，也有可能在不同的 VLAN 中。  
 
@@ -32,7 +32,7 @@ LocalSend 客户端采用 UDP 组播来把自己的存在通告给局域网中�
 
 更难受的是，这些设备甚至采用的是动态 IP，可能会发生变动，就算我在 LocalSend 中手动添加了对方的 IP 地址，过一段时间后对方分配的 IP 变了就又全部木大了...   
 
-### Solution
+### 解决方案
 
 尽管多播被 VLAN 隔离了，但是咱发现办公区校园网在三层配置上是会转发单播包的，我可以通过单播和不同的 VLAN 中的主机进行通信。  
 
@@ -63,41 +63,41 @@ Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户�
 
 </details>
 
-## CLI Usage
+## 命令行参数与环境变量
 
 ```bash
-./localsend-switch-windows-amd64.exe -h # Show help message
+./localsend-switch-windows-amd64.exe -h # 查看帮助信息
 ```
 
-| Flag | Description |
+| 标志 | 描述 |
 |------|-------------|
-| `--help` | Show help message |
-| `--debug` | Enable debug logging |
+| `--help` | 显示帮助信息 |
+| `--debug` | 启用调试日志 |
 
-| Option | Environment Variable | Description | Default Value |
+| 选项 | 环境变量 | 描述 | 默认值 |
 |--------|----------------------|-------------|---------------|
-| `--autostart ` | × | Set autostart on user login, can be `enable` or `disable`. <br><br> * Currently only support *Windows*, *Linux with Desktop* |  |
-| `--client-alive-check-interval` | `LOCALSEND_SWITCH_CLIENT_ALIVE_CHECK_INTERVAL` | Interval (in seconds) to check if local LocalSend client is still alive. | `10` |
-| `--client-broadcast-interval` | `LOCALSEND_SWITCH_CLIENT_BROADCAST_INTERVAL` | Interval (in seconds) to broadcast presence of local LocalSend client to peer switches. | `15` |
-| `--log-file` | `LOCALSEND_SWITCH_LOG_FILE_PATH` | Path to log file. Can be relative or absolute. | `"localsend-switch-logs/latest.log"` |
-| `--log-file-max-size` | `LOCALSEND_SWITCH_LOG_FILE_MAX_SIZE` | Max size (in Bytes) of log file before rotation. | `5242880` (5 MiB) | 
-| `--log-file-max-historical` | `LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL` | Max number of historical (rotated) log files to keep. | `5` |
-| `--ls-addr` | `LOCALSEND_MULTICAST_ADDR` | LocalSend multicast address. | `"224.0.0.167"` |
-| `--ls-port` | `LOCALSEND_SERVER_PORT` | LocalSend HTTP server (and multicast) port. | `53317` |
-| `--peer-addr` | `LOCALSEND_SWITCH_PEER_ADDR` | IP Address of peer switch node. |  |
-| `--peer-connect-max-retries` | `LOCALSEND_SWITCH_PEER_CONNECT_MAX_RETRIES` | Max retries to connect to peer switch before giving up. <br><br> * Set to a **negative** number for unlimited retries. | `10` |
-| `--peer-port` | `LOCALSEND_SWITCH_PEER_PORT` | Port of peer switch node. | (Default to `--serv-port`) |
-| `--secret-key` | `LOCALSEND_SWITCH_SECRET_KEY` | Secret key for secure communication with peer switch nodes. |  |
-| `--serv-port` | `LOCALSEND_SWITCH_SERV_PORT` | Port to listen for incoming TCP connections from peer switch nodes. |  |
-| `--work-dir` | `LOCALSEND_SWITCH_WORK_DIR` | Working directory of the process. | (Default to the [executable's directory](#working-directory)) |
+| `--autostart ` | × | 设置是否开机 (用户登录后) 自启，可选值: `enable` 或 `disable`。<br><br> * 目前仅支持 *Windows*, *有桌面环境的 Linux* |  |
+| `--client-alive-check-interval` | `LOCALSEND_SWITCH_CLIENT_ALIVE_CHECK_INTERVAL` | 探测本地 LocalSend 是否仍在运行的时间间隔（秒）。 | `10` |
+| `--client-broadcast-interval` | `LOCALSEND_SWITCH_CLIENT_BROADCAST_INTERVAL` | 向其他 Switch 节点广播本地 LocalSend 客户端信息的时间间隔（秒）。 | `15` |
+| `--log-file` | `LOCALSEND_SWITCH_LOG_FILE_PATH` | 日志文件的路径，可以是相对路径或绝对路径。 | `"localsend-switch-logs/latest.log"` |
+| `--log-file-max-size` | `LOCALSEND_SWITCH_LOG_FILE_MAX_SIZE` | 单个日志文件的最大大小（字节）。 | `5242880` (5 MiB) | 
+| `--log-file-max-historical` | `LOCALSEND_SWITCH_LOG_FILE_MAX_HISTORICAL` | 最多保留的历史日志文件数量。 | `5` |
+| `--ls-addr` | `LOCALSEND_MULTICAST_ADDR` | LocalSend 组播地址。 | `"224.0.0.167"` |
+| `--ls-port` | `LOCALSEND_SERVER_PORT` | LocalSend HTTP 服务器 (组播) 端口。 | `53317` |
+| `--peer-addr` | `LOCALSEND_SWITCH_PEER_ADDR` | 要连接到的 Switch 节点的 IP 地址。 |  |
+| `--peer-connect-max-retries` | `LOCALSEND_SWITCH_PEER_CONNECT_MAX_RETRIES` | 连接到对等 Switch 节点的最大重试次数。<br><br> * 设置为 **负数** 表示无限重试。 | `10` |
+| `--peer-port` | `LOCALSEND_SWITCH_PEER_PORT` | 对等 Switch 节点的端口。 | (默认使用 `--serv-port`) |
+| `--secret-key` | `LOCALSEND_SWITCH_SECRET_KEY` | 用于与对等 Switch 节点安全通信的对称加密密钥。 |  |
+| `--serv-port` | `LOCALSEND_SWITCH_SERV_PORT` | TCP 服务端口，监听来自对等 Switch 节点的 TCP 连接。 |  |
+| `--work-dir` | `LOCALSEND_SWITCH_WORK_DIR` | 进程的工作目录。 | (默认使用 [可执行文件所在目录](#working-directory)) |
 
-## Configure via Environment Variables
+## 通过环境变量进行配置
 
-你可以直接通过环境变量来配置 LocalSend Switch，只需将上表中的环境变量设置为对应的值，写入 `localsend-switch.env` 文件，并放在和可执行文件同目录下即可：  
+可以直接通过环境变量来配置 LocalSend Switch，只需在 `localsend-switch.env` 文件中写入环境变量键值对，并将其放在和可执行文件同目录下即可：  
 
 ```bash
 somewhere/
-    ├── localsend-switch.env # <- here
+    ├── localsend-switch.env # <- 在这儿
     └── localsend-switch-linux-amd64
 ```
 
@@ -110,11 +110,11 @@ LOCALSEND_SWITCH_SERV_PORT=7761
 LOCALSEND_SWITCH_SECRET_KEY=el_psy_kongroo
 ```
 
-## Implementation Details
+## 一些实现细节
 
 <details>
 
-<summary>Click to see Implementation Details</summary>
+<summary>展开查看实现细节</summary>
 
 ### 本地客户端探测与主动广播
 
@@ -154,9 +154,9 @@ Switch 节点间的数据传输在 TCP 连接上进行，默认情况下是**明
 
 > 💡 另外为了防止接收到恶意构造的 LocalSend 客户端信息，限制每个 Switch 节点仅可向**私有 IP 地址**发送 HTTP(S) 注册请求；上述的每条消息有唯一 ID 也可以一定程度上防止重放攻击。
 
-### Log Files
+### 日志文件
 
-Log files are rotated according to the configuration. By default, the log file path is `localsend-switch-logs/latest.log`. After rotation, the log files are also stored **in the same directory**, with filename pattern `<log_name>_rotated.<number>.log`, for example:
+日志文件会根据配置进行轮转。默认情况下，日志文件路径为 `localsend-switch-logs/latest.log`。轮转后，日志文件也会存储在**同一目录**下，文件名格式为 `<log_name>_rotated.<number>.log`，例如：
 
 ```bash
 localsend-switch-logs/
@@ -170,33 +170,35 @@ localsend-switch-logs/
 
 Here, `latest.log` is the current log file, `latest_rotated.1.log` is the most recently rotated log file, and `latest_rotated.5.log` is the oldest log file currently retained (`--log-file-max-historical=5`).   
 
-### Working Directory
+其中，`latest.log` 是当前最新的日志文件，`latest_rotated.1.log` 是最近一次轮转产生的日志文件，`latest_rotated.5.log` 是当前保留的最旧的日志文件（由 `--log-file-max-historical=5` 指定）。
 
-The working directory will default to the **executable's directory**.   
+### 进程工作目录
 
-* You can specify relative paths for log files, for example:  
+进程工作目录默认为**可执行文件所在目录**。
+
+* 你可以为日志文件指定相对路径，例如：  
 
     ```bash
     ./localsend-switch-linux-amd64 --log-file=localsend-switch-logs/latest.log
     ```
 
-    and the log file will be definitely created here:  
+    那么日志文件就会一定会被创建在： 
 
     ```bash
     somewhere/
     ├── localsend-switch-logs
-    │   └── latest.log # <- here
+    │   └── latest.log # <- 在这儿
     └── localsend-switch-linux-amd64
     ```
 
 
-* This is especially useful when `--autostart` is **enabled**, as the program will be started by the system under a different working directory (usually the system directory).  
-* You can also specify a custom working directory using the `--work-dir` command-line argument or the `LOCALSEND_SWITCH_WORK_DIR` environment variable. 
+* 当启用 `--autostart` 时这就老有用了，因为程序将由系统在**不同的工作目录**（通常是系统目录）下启动。
+* 你也可以通过命令行参数 `--work-dir` 或环境变量 `LOCALSEND_SWITCH_WORK_DIR` 来自定义工作目录。  
 
 </details> 
 
 
-## Example
+## 示例
 
 这里构造一个简单的星型拓扑结构，假设局域网有六台主机 A, B, C, D, E, F，其中 D 为服务器，有静态 IP 地址 `192.168.232.47`；其他 A, B, C, E, F 均为 PC 计算机，有 LocalSend 客户端。  
 
@@ -213,33 +215,31 @@ The working directory will default to the **executable's directory**.
     ./localsend-switch-windows-amd64.exe --peer-addr 192.168.232.47 --peer-port 7761 --secret-key=el_psy_kongroo --peer-connect-max-retries -1
     ```
 
+## 构建项目
 
-
-## Build
-
-0. Generate the protobuf code:
+0. 生成 Protobuf 代码：
 
     ```bash
     go generate ./...
     ```
 
-    It has been already generated in the repository, so you can skip this step.  
+    该代码已经包含在仓库源码中，其实可以跳过这一步。  
 
-1. Install `protoc` and `protoc-gen-go`, refer to [the official guide](https://protobuf.dev/getting-started/gotutorial/#compiling-protocol-buffers) for installation instructions.  
+1. 安装 `protoc` 和 `protoc-gen-go`，见[官方指南](https://protobuf.dev/getting-started/gotutorial/#compiling-protocol-buffers)。  
 
-2. Build the project: 
+2. 构建项目: 
 
     ```bash
     go build -o localsend-switch
-    # Cross compilation
+    # 跨平台构建
     GOOS=linux GOARCH=amd64 go build -o compiled/localsend-switch-linux-amd64
     GOOS=windows GOARCH=amd64 go build -o compiled/localsend-switch-windows-amd64.exe
     GOOS=darwin GOARCH=amd64 go build -o compiled/localsend-switch-macos-amd64
-    # Make it start without a cmd window (run silently) on Windows
+    # 使得在 Windows 上启动时没有命令行窗口（静默运行）
     GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o compiled/localsend-switch-windows-amd64-silent.exe
     ```
 
-## Related Work
+## 相关工作
 
 * [LocalSend](https://github.com/localsend/localsend)  
 * [LocalSend Protocol](https://github.com/localsend/protocol)  
