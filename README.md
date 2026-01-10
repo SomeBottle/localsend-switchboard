@@ -223,6 +223,20 @@ Here we construct a simple logical star topology. Suppose there are six hosts on
 
 With this setup, the LocalSend clients on A, B, C, E, and F will be able to discover each other!  
 
+The LocalSend client can be configured to start automatically on boot (after login). LocalSend Switch also supports autostart option, so you don't need to manually start LocalSend Switch every time you use LocalSend:  
+
+```bash
+# Windows (a command-line window will pop up on startup)
+./localsend-switch-windows-amd64.exe --autostart=enable
+# Windows (runs silently with no standard output; check the log file for status)
+./localsend-switch-windows-amd64-silent.exe --autostart=enable
+# Linux with a desktop environment
+./localsend-switch-linux-amd64 --autostart=enable
+# MacOS is not supported yet, because I don't have a Mac to test on :(  
+```
+
+> Note: LocalSend Switch has very low resource usage, so it can run in the background all the time without any worries.   
+
 ## Build
 
 0. Generate the protobuf code:

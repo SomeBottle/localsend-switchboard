@@ -217,6 +217,20 @@ Here, `latest.log` is the current log file, `latest_rotated.1.log` is the most r
 
 这样一来，A, B, C, E, F 上的 LocalSend 客户端就能互相发现对方辣！  
 
+LocalSend 客户端可以配置开机 (登录后) 自启，LocalSend Switch 也可以配置自启，这样每次开机就不用手动去启动 LocalSend Switch 了：  
+
+```bash
+# Windows (启动时会弹出一个命令行窗口)
+./localsend-switch-windows-amd64.exe --autostart=enable
+# Windows (静默运行，没有命令行输出，请使用日志文件查看运行状态)
+./localsend-switch-windows-amd64-silent.exe --autostart=enable
+# 有桌面环境的 Linux
+./localsend-switch-linux-amd64 --autostart=enable
+# MacOS 暂不支持，因为我没有 Mac 设备可用于测试
+```
+
+> 注: LocalSend Switch 的资源占用很低，可以一直放在后台运行，不用担心。
+
 ## 构建项目
 
 0. 生成 Protobuf 代码：
