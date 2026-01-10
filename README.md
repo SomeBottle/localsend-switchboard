@@ -6,7 +6,7 @@ Lang: English | [简体中文](./README.zh_CN.md)
 
 A lightweight utility to help LocalSend's device discovery in VLAN-segmented local area networks.  
 
-> 目前适配 LocalSend Protocol v2.1  
+> Currently compatible with LocalSend Protocol v2.1  
 
 ## Overview
 
@@ -17,49 +17,57 @@ A lightweight utility to help LocalSend's device discovery in VLAN-segmented loc
 ### Problem Illustration
 
 ![Issue Illustration](pics/issue_illustration.drawio.png)  
-> Figure 1: Illustration of the problem. 可以看到 VLAN 0 中的 LocalSend 客户端无法成功发现 VLAN 2 中的 LocalSend 客户端，反之亦然。  
+> Figure 1: Illustration of the problem. As shown above, LocalSend clients in VLAN 0 cannot successfully discover LocalSend clients in VLAN 2, and vice versa.
 
-LocalSend 客户端采用 UDP 组播来把自己的存在通告给局域网中其他客户端。然而，像校园网这种大型局域网，通常为了管理和减小广播域规模等目的，会将网络划分为多个 VLAN（虚拟局域网），即使是现实中距离很近的两个设备，也有可能在不同的 VLAN 中。  
+LocalSend clients use UDP multicast to advertise their presence to other clients on the LAN. However, in large-scale local area networks—such as campus networks—the network is typically segmented into multiple VLANs (Virtual Local Area Networks) for management, security, and broadcast domain reduction purposes. As a result, even **two devices that are physically close to each other may reside in different VLANs**.  
 
-* 比如我连接到校园网 WiFi 的电脑和连接有线校园网的实验室打印机电脑，虽然在同一间屋子，但就是处于不同网段的网络中。
+* For example, my laptop connected to the campus Wi-Fi and a lab PC (or printer) connected via wired campus Ethernet are in the same room, yet they live in different subnets.  
 
-不同 VLAN 之间的数据转发依赖于第三层路由设备来实现，不幸的是，LocalSend 向 `224.0.0.x` 组播地址及应用端口发送的 UDP 报文段是**不会被三层设备转发**的，而且其 TTL 值为 `1`，Wireshark 抓包如下：  
+Communication between different VLANs depends on Layer 3 routing devices. Unfortunately, the UDP packets that LocalSend sends to the multicast address range `224.0.0.x` (on its application port) are **not forwarded by Layer 3 devices**. Besides, these packets have a TTL of `1`, as shown in the Wireshark capture below:
 
 ![Wireshark Capture](pics/wireshark_captured.png)  
-> Figure 2: Wireshark 抓包显示 LocalSend 发送的组播 UDP 报文段的 TTL 值为 1。  
+> Figure 2: Wireshark capture showing that the multicast UDP packets sent by LocalSend have a TTL value of 1.  
 
-因此就有了明明两台设备近在咫尺，但是却没法互相发现对方 LocalSend 客户端的尴尬局面 ㄟ( ▔, ▔ )ㄏ。  
+So we end up with this awkward situation where two devices are physically just a few meters apart, yet they simply can't discover each other's LocalSend clients. ㄟ( ▔, ▔ )ㄏ.  
 
-更难受的是，这些设备甚至采用的是动态 IP，可能会发生变动，就算我在 LocalSend 中手动添加了对方的 IP 地址，过一段时间后对方分配的 IP 变了就又全部木大了...   
+And to make things even more annoying, these devices often use dynamic IP addresses, which may change at any time. Even if I manually add the peer's IP address in LocalSend, everything breaks again once the IP changes… and we're back to square one.
 
 ### Solution
 
-尽管多播被 VLAN 隔离了，但是咱发现办公区校园网在三层配置上是会转发单播包的，我可以通过单播和不同的 VLAN 中的主机进行通信。  
+Although multicast traffic is isolated by VLANs, I noticed that in the campus network (office area), unicast traffic is forwarded at Layer 3. In other words, I can communicate with hosts in different VLANs using unicast packets.  
 
-一个 LocalSend 客户端在尝试发现局域网内其他客户端时，会发送组播 UDP 包来声明自己的存在，其他客户端收到组播包后会通过**单播的 HTTP 请求**来在这个客户端上进行注册。因为单播可以跨 VLAN，所以这个注册操作是可以实现的，我可以替 LocalSend 客户端向局域网内的其他 LocalSend 客户端发送注册请求，从而实现跨 VLAN 的发现和注册。
+When a LocalSend client tries to discover other clients on the local network, it sends out multicast UDP packets to announce its presence. After receiving such a multicast announcement, other clients will send a **unicast HTTP request** back to the announcing client to register themselves. Since unicast traffic can cross VLAN boundaries, this registration step actually works.  
 
-* 详见 [LocalSend Protocol - Discovery](https://github.com/localsend/protocol/blob/main/README.md#3-discovery)  
+So the idea is simple: I can send these registration requests **on behalf of LocalSend clients**, allowing discovery and registration to work across VLANs.  
 
-从官方的协议文档可以看到 LocalSend 的通告包和注册请求的负载中都只有端口信息，没有源 IP 信息，客户端在处理到来的请求时实际上是**从网络层分组头部获取到 IP 地址**的，因此这个请求必须从 LocalSend 客户端所处的主机上发出。为了实现这点，我可以在每台有 LocalSend 的主机上都额外运行一个工具进程来代发注册请求。  
+* See [LocalSend Protocol - Discovery](https://github.com/localsend/protocol/blob/main/README.md#3-discovery)  
 
-关键的问题来了，这些工具进程怎么知道局域网内其他 LocalSend 客户端的存在呢？其实我可以借助单播传输来实现这些工具进程之间的通信，从而让它们**互相交换**各自了解的 LocalSend 客户端信息。  
+From the official protocol documentation, we can see that both the announcement packets and the registration requests only contain port information, but no source IP address. In practice, the receiving client obtains the peer's IP address from the **network-layer packet header**. This means the registration request must be sent from the host where the LocalSend client resides.
 
-为了解决动态 IP 的问题，我可以把其中一个或多个工具进程作为交换节点**部署在拥有静态 IP 的服务器**上（内网和外网的均可），然后让其他工具进程连接到这些交换节点，当交换过程收敛时，这些工具进程就能互相了解对方所处主机上的 LocalSend 客户端信息了。  
+To make this work, I can run an additional helper process alongside each LocalSend client, which sends registration requests on behalf of the local LocalSend client.  
 
-这一套实现下来，LocalSend Switch 这个工具就诞生辣！٩(>௰<)و  
+Now comes the key question: how do these helper processes know about the existence of other LocalSend clients on the network?
+
+The answer is: by using **unicast communication between the helper processes themselves**, allowing them to exchange information about the LocalSend clients they know about.  
+
+To deal with the dynamic IP problem, one or more helper processes can be deployed as switch nodes on **servers with static IP addresses** (either on the internal network or on the public Internet). Other helper processes connect to these exchange nodes, and once information exchange converges, all of them will have a consistent view of the LocalSend clients running on their respective hosts.  
+
+And with that, **LocalSend Switch** was born! ٩(>௰<)و  
 
 ![Switch Strategy Illustration](pics/switch_strategy_illustration.drawio.png)   
-> Figure 3: LocalSend Switch 的工作原理示意图。实线表示的是单播分组的传播路径，虚线表示的是 TCP 逻辑连接；虚线上的箭头对应数据在逻辑上的传播方向。LocalSend 客户端和 Switch 进程的旁边标记了连接端口，只有 VLAN 1 中的 Switch 进程监听了服务端口 `7761`，其余两个 Switch 进程的均为 OS 分配的临时端口；LocalSend 客户端默认服务端口是 `53317`。  
+> Figure 3: Overview of how LocalSend Switch works. Solid lines represent the propagation paths of unicast packets, while dashed lines represent logical TCP connections; arrows on dashed lines indicate the logical direction of data flow. Ports are annotated next to LocalSend clients and Switch processes. Only the Switch process in VLAN 1 listens on the server port `7761`; the other two Switch processes use OS-assigned ephemeral ports. The default LocalSend client service port is `53317`.   
 
-Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户端信息传播以及注册请求代发的过程。图中，首先 `10.84.0.0/15` 网段中 `10.84.123.223` 这台主机上的 LocalSend 客户端发送了组播包，通告自己的存在，被同一台机器上的 LocalSend Switch 捕获到，Switch 进程随后将该通告信息通过单播发送 (图中标记为 `CLIENT ANNOUNCE`，传播路径为蓝色) 给它所连接的所有 Switch 节点 (图中只有 `192.168.232.47:7761` 这一个)。
+Figure 3 illustrates the working principle of LocalSend Switch, showing a single round of client information propagation and proxied registration.  
 
-> 发送的数据中封装了 **LocalSend 客户端的 IP 和端口**，无论被转发多少次，这部分数据都不会变，指向**最初发出**这条通告信息的 LocalSend 客户端。    
+In the diagram, a LocalSend client running on host `10.84.123.223` in the `10.84.0.0/15` subnet first sends out a multicast announcement. This announcement is captured by the LocalSend Switch running on the same host. The Switch process then forwards this announcement via unicast (labeled as `CLIENT ANNOUNCE`, shown in blue) to all Switch nodes it is connected to (only `192.168.232.47:7761` in the figure).  
 
-`47` 主机上 Switch 节点接收到通告的客户端信息后，会将该信息转发至它所连接的**其他** Switch 节点（图中只有 `10.94.23.114:52341`），图中标记为 `FORWARD ANNOUNCE`，传播路径为紫色。因为这台主机上没有 LocalSend 客户端，所以不会有注册请求的代发操作。  
+> The forwarded data encapsulates the **IP address and port** of the LocalSend client. No matter how many times it is forwarded, this information remains unchanged and always points to the original LocalSend client that issued the announcement.  
 
-`114` 主机上的 Switch 节点接收到通告信息后，会将该信息发送给它所连接的其他所有 Switch 节点（图中没有其他节点了）；因为这台主机上有 LocalSend 客户端，所以 Switch 节点随后会向通告信息中携带的 LocalSend 客户端地址 (图中为 `10.84.123.223:53317` ) 发送 HTTP(S) 注册请求（图中标记为 `REGISTER CLIENT`，传播路径为棕色），告知对方本地客户端的 IP 和地址 (图中为 `10.94.23.114:53317`)，完成注册请求的代发操作。注意这个注册请求是直接由 Switch 发送给 LocalSend 客户端的。  
+After receiving the client announcement, the Switch node on host `192.168.232.47` forwards it to the **other Switch nodes** it is connected to (only `10.94.23.114:52341` in the figure). This step is labeled `FORWARD ANNOUNCE` and shown in purple. Since there is no LocalSend client running on this host, no proxied registration is performed here.  
 
-实际上每个 Switch 节点都有这样的转发功能，你甚至可以在逻辑上串联或者组成树形、星型、网状、混合等拓扑结构。
+When the Switch node on host `10.94.23.114` receives the announcement, it forwards the information to any other connected Switch nodes (none in this case). Because this host does have a LocalSend client running, the Switch then sends an HTTP(S) registration request (labeled `REGISTER CLIENT`, shown in brown) directly to **the LocalSend client specified in the announcement** (i.e. `10.84.123.223:53317`). This request informs the remote client of the local client's IP address and port (`10.94.23.114:53317`), completing the proxied registration process.
+
+In practice, **every Switch node has this forwarding capability**. You can even chain them together or arrange them into tree, star, mesh, or hybrid topologies, depending on your needs.  
 
 </details>
 
@@ -93,7 +101,7 @@ Fig.3 为 LocalSend Switch 的工作原理示意图，展示了单次的客户�
 
 ## Configure via Environment Variables
 
-你可以直接通过环境变量来配置 LocalSend Switch，只需将上表中的环境变量设置为对应的值，写入 `localsend-switch.env` 文件，并放在和可执行文件同目录下即可：  
+You can also configure LocalSend Switch directly via environment variables. Simply set the variables listed in the table above, write them into a `localsend-switch.env` file, and place it in the same directory as the executable:
 
 ```bash
 somewhere/
@@ -101,9 +109,9 @@ somewhere/
     └── localsend-switch-linux-amd64
 ```
 
-这样启动的时候就不需要写繁琐的命令行参数了。  
+With this setup, you don't have to pass a bunch of verbose command-line arguments every time you start the program.
 
-示例 `localsend-switch.env` 文件内容：
+Example `localsend-switch.env` file:  
 
 ```bash
 LOCALSEND_SWITCH_SERV_PORT=7761
@@ -116,43 +124,43 @@ LOCALSEND_SWITCH_SECRET_KEY=el_psy_kongroo
 
 <summary>Click to see Implementation Details</summary>
 
-### 本地客户端探测与主动广播
+### Local Client Detection and Proactive Broadcasting
 
-LocalSend Switch 会定期检查本地是否有 LocalSend 客户端在运行，默认间隔为 `10` 秒（可通过 `--client-alive-check-interval` 配置）。  
+LocalSend Switch periodically checks whether a LocalSend client is running on the local machine. The default interval is `10` seconds (configurable via `--client-alive-check-interval`).  
 
-* 如果本地客户端发送了 UDP 组播包，Switch 会立即捕捉到并判定本地有客户端在运行。
+* If a local client sends a UDP multicast packet, the Switch will immediately capture it and determine that a local client is running.  
 
-一旦发现本地有 LocalSend 客户端在运行，Switch 会每隔一段时间（默认 `15` 秒，可通过 `--client-broadcast-interval` 配置）向它所连接的所有 Switch 节点广播本地客户端的信息。
+Once a local LocalSend client is detected, the Switch will periodically (default `15` seconds, configurable via `--client-broadcast-interval`) broadcast the local client's information to all Switch nodes it is connected to.  
 
-这样一来用户不需要手动点击 LocalSend 客户端的设备列表刷新按钮，过一段时间后也能自动发现局域网中的其他客户端。  
+As a result, users do not need to manually click the device list refresh button in the LocalSend client; after a short period of time, other clients in the local network can be discovered automatically.  
 
-### 交换与注册机制
+### Exchange and Registration Mechanism
 
-每一个 LocalSend Switch 都可能担当以下两个角色中的一个或多个：  
+Each LocalSend Switch may act as one or more of the following roles:  
 
-1. **信息交换节点**：① 监听 `--serv-port` 指定的端口，等待其他 Switch 节点的 TCP 连接请求，建立连接；② 接收所有 Switch 节点连接上发来的 LocalSend 客户端信息 (每条信息会标记其来源的连接)，存入缓冲区；③ 给所有 Switch 节点连接发送*缓冲区中的 LocalSend 客户端信息*，每一条信息都会发给**除其来源连接以外**的其他连接。
-2. **客户端辅助节点**：① 通过 `--peer-addr` 和 `--peer-port` 的配置连接到另一个 Switch 节点；② 捕捉本地 LocalSend 客户端发出的 UDP 组播包，把包中的本地客户端信息送入缓冲区；③ 在收到其他 Switch 节点转发过来的 LocalSend 客户端信息时，**代替本地客户端向信息中指明的客户端地址发送 HTTP(S) 注册请求**。  
+1. **Information Exchange Node**：① Listens on the port specified by --serv-port, waits for TCP connection requests from other Switch nodes, and establishes connections; ② Receives LocalSend client information sent from all connected Switch nodes (each message is tagged with its source connection) and stores it in a buffer; ③ Sends the *LocalSend client information in the buffer* to all connected Switch nodes; each message is sent to **all connections except the one it originated from**.  
+2. **Client Assistant Node**：① Connects to another Switch node using the configuration `--peer-addr` and `--peer-port`; ② Captures UDP multicast packets sent by local LocalSend clients and places the local client information contained in those packets into the buffer; ③ Upon receiving LocalSend client information forwarded by other Switch nodes, **acts on behalf of the local client to send HTTP(S) registration requests to the client address specified in the information**.  
 
-总的来说，*缓冲区中的 LocalSend 客户端信息*来自:  
+In summary, the *LocalSend client information in the buffer* comes from: 
 
-1. 本地客户端探测。  
-2. 其他 Switch 节点转发过来的客户端信息。  
+1. Local client detection.
+2. Client information forwarded by other Switch nodes.  
 
-为了避免交换过程中产生环路，防止每条 LocalSend 客户端信息在 Switch 网络中无限制地传播，每条信息都携带了:  
+To avoid loops during the exchange process and prevent each piece of LocalSend client information from propagating indefinitely within the Switch network, each message carries:  
 
-1. **TTL（存活时间）字段**：每经过一个 Switch 节点，TTL 减 `1`，当 TTL 减到 `0` 时，该信息将不再被转发。默认 TTL 为 `255`。  
-2. **唯一 ID 字段**：每条信息都有一个唯一 ID，由 Switch 节点的临时随机标识以及消息的递增编号组成。每个 Switch 节点都会**避免重复把相同 ID 的客户端信息重复加入缓冲区**。  
-    * 不过每个 ID 在缓存中也是有 TTL 的，默认是 `5` 分钟。  
+1. **TTL (Time To Live) Field**: The TTL is decremented by `1` each time the message passes through a Switch node. When the TTL reaches `0`, the message will no longer be forwarded. The default TTL is `255`. 
+2. **Unique ID Field**: Each message has a unique ID, composed of a temporary random identifier of the Switch node and an incrementing message sequence number. Each Switch node **avoids inserting client information with the same ID into the buffer more than once**. 
+    * However, each ID also has an expiration time in the cache, which defaults to `5` minutes.  
 
-### 通信安全性
+### Communication Security
 
-Switch 节点间的数据传输在 TCP 连接上进行，默认情况下是**明文**的，其中主要是 LocalSend 客户端的主机的地址、设备型号等信息。  
+Data transmission between Switch nodes is carried out over TCP connections and is **plaintext** by default. The transmitted data mainly includes information such as the host address and device model of the LocalSend client.  
 
-尽管在校园网这种较为可信的局域网中不用担心遭到中间人攻击，而且传输的数据本身也没有那么敏感，但如果中间有的 Switch 节点在外网上，就还是有一定风险的，如中间人可以伪造 LocalSend 客户端信息，诱导其他 Switch 节点向恶意构造的内网客户端地址发送注册请求，从而造成拒绝服务攻击 (DoS)。  
+Although in a relatively trusted local network like a campus network, there is usually no need to worry about man-in-the-middle (MITM) attacks (and the data itself **is not particularly sensitive**), there is still a certain level of risk if some Switch nodes are exposed to the public Internet. For example, an attacker acting as a MITM could forge LocalSend client information and trick other Switch nodes into sending registration requests to maliciously crafted internal client addresses, resulting in a denial-of-service (DoS) attack.
 
-因此建议用 `--secret-key` 配置一个**对称加密密钥**，Switch 节点会利用该密钥对传输的数据进行端侧 **AES 加密**，只有持有相同密钥的节点才能解密和处理这些信息，从而提高通信的安全性（这里不采用非对称加密，本项目的场景和复杂度不太用得上，这样简单易用就行）。
+Therefore, it is recommended to configure a **symmetric encryption key** using `--secret-key`. Switch nodes will use this key to perform **end-to-end AES encryption** on transmitted data. Only nodes that possess the same key can decrypt and process the information, thereby improving communication security. (Asymmetric encryption is not used here, as it is unnecessary for this project's use case and complexity; a simple and easy-to-use approach is sufficient.)  
 
-> 💡 另外为了防止接收到恶意构造的 LocalSend 客户端信息，限制每个 Switch 节点仅可向**私有 IP 地址**发送 HTTP(S) 注册请求；上述的每条消息有唯一 ID 也可以一定程度上防止重放攻击。
+> 💡 In addition, to prevent receiving maliciously crafted LocalSend client information, each Switch node is restricted to sending HTTP(S) registration requests **only to private IP addresses**. The fact that each message has a unique ID can also help mitigate replay attacks to some extent.  
 
 ### Log Files
 
@@ -198,22 +206,22 @@ The working directory will default to the **executable's directory**.
 
 ## Example
 
-这里构造一个简单的星型拓扑结构，假设局域网有六台主机 A, B, C, D, E, F，其中 D 为服务器，有静态 IP 地址 `192.168.232.47`；其他 A, B, C, E, F 均为 PC 计算机，有 LocalSend 客户端。  
+Here we construct a simple logical star topology. Suppose there are six hosts on the local area network: A, B, C, D, E, and F. Among them, D acts as the server and has a static IP address `192.168.232.47`. The others—A, B, C, E, and F—are PC computers running the LocalSend client.
 
-* 在 D 上运行 LocalSend Switch，监听端口 `7761`，作为中心交换节点，启用端侧加密：  
+* Run LocalSend Switch on D, listening on port `7761`, as the central switching node, and enable end-side encryption:
 
     ```bash
     ./localsend-switch-linux-amd64 --serv-port=7761 --secret-key=el_psy_kongroo
     ```
 
-* 在 A, B, C, E, F 上运行 LocalSend Switch，连接到 D：  
+* Run LocalSend Switch on A, B, C, E, and F, and connect them to D:  
 
     ```bash
     # Set --peer-connect-max-retries to -1 for unlimited retries in case the server D is temporarily unreachable
     ./localsend-switch-windows-amd64.exe --peer-addr 192.168.232.47 --peer-port 7761 --secret-key=el_psy_kongroo --peer-connect-max-retries -1
     ```
 
-
+With this setup, the LocalSend clients on A, B, C, E, and F will be able to discover each other!  
 
 ## Build
 
