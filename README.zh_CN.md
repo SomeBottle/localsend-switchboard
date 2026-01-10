@@ -237,7 +237,7 @@ LocalSend 客户端可以配置开机 (登录后) 自启，LocalSend Switch 也�
 
 ### 通过 Docker 运行
 
-上文也提到，有些交换节点可能仅作信息交换节点使用，部署在有静态 IP 的服务器上，这种情况下就可以使用 Docker 来运行 LocalSend Switch：  
+上文也提到，有些交换节点可能仅作信息交换节点使用，部署在有静态 IP 的服务器上 (这些机器可能没有图形化界面，通常没有 LocalSend 客户端)，这种情况下就可以使用 Docker 来运行 LocalSend Switch：  
 
 ```bash
 # --restart unless-stopped 保证容器在崩溃或重启后自动重启

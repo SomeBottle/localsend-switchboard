@@ -243,7 +243,7 @@ The LocalSend client can be configured to start automatically on boot (after log
 
 ### Run via Docker
 
-As mentioned above, some switch nodes may be used only as Information Exchange Nodes and deployed on servers with a static IP. In this case, you can run LocalSend Switch using Docker:  
+As mentioned above, some switch nodes may be used only as Information Exchange Nodes and deployed on servers with a static IP (these machines may not have a graphical interface and usually do not run a LocalSend client). In this case, you can run LocalSend Switch using Docker:  
 
 ```bash
 # --restart unless-stopped ensures the container automatically restarts
