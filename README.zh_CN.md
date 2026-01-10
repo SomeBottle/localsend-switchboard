@@ -200,6 +200,8 @@ Here, `latest.log` is the current log file, `latest_rotated.1.log` is the most r
 
 ## 示例
 
+### 星型拓扑
+
 这里构造一个简单的逻辑星型拓扑结构，假设局域网有六台主机 A, B, C, D, E, F，其中 D 为服务器，有静态 IP 地址 `192.168.232.47`；其他 A, B, C, E, F 均为 PC 计算机，有 LocalSend 客户端。  
 
 * 在 D 上运行 LocalSend Switch，监听端口 `7761`，作为中心交换节点，启用端侧加密：  
@@ -217,6 +219,8 @@ Here, `latest.log` is the current log file, `latest_rotated.1.log` is the most r
 
 这样一来，A, B, C, E, F 上的 LocalSend 客户端就能互相发现对方辣！  
 
+### 开机自启
+
 LocalSend 客户端可以配置开机 (登录后) 自启，LocalSend Switch 也可以配置自启，这样每次开机就不用手动去启动 LocalSend Switch 了：  
 
 ```bash
@@ -230,6 +234,21 @@ LocalSend 客户端可以配置开机 (登录后) 自启，LocalSend Switch 也�
 ```
 
 > 注: LocalSend Switch 的资源占用很低，可以一直放在后台运行，不用担心。
+
+### 通过 Docker 运行
+
+上文也提到，有些交换节点可能仅作信息交换节点使用，部署在有静态 IP 的服务器上，这种情况下就可以使用 Docker 来运行 LocalSend Switch：  
+
+```bash
+# --restart unless-stopped 保证容器在崩溃或重启后自动重启
+# --network host 使得容器使用主机的网络栈，确保各项功能正常
+docker run -d --name localsend-switch \
+    -e LOCALSEND_SWITCH_SERV_PORT=7761 \
+    -e LOCALSEND_SWITCH_SECRET_KEY=el_psy_kongroo \
+    --restart unless-stopped \
+    --network host \
+    somebottle/localsend-switch:1.0.0
+```
 
 ## 构建项目
 

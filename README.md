@@ -206,6 +206,8 @@ The working directory will default to the **executable's directory**.
 
 ## Example
 
+### Star Topology
+
 Here we construct a simple logical star topology. Suppose there are six hosts on the local area network: A, B, C, D, E, and F. Among them, D acts as the server and has a static IP address `192.168.232.47`. The others—A, B, C, E, and F—are PC computers running the LocalSend client.
 
 * Run LocalSend Switch on D, listening on port `7761`, as the central switching node, and enable end-side encryption:
@@ -223,6 +225,8 @@ Here we construct a simple logical star topology. Suppose there are six hosts on
 
 With this setup, the LocalSend clients on A, B, C, E, and F will be able to discover each other!  
 
+### Autostart on Login
+
 The LocalSend client can be configured to start automatically on boot (after login). LocalSend Switch also supports autostart option, so you don't need to manually start LocalSend Switch every time you use LocalSend:  
 
 ```bash
@@ -236,6 +240,23 @@ The LocalSend client can be configured to start automatically on boot (after log
 ```
 
 > Note: LocalSend Switch has very low resource usage, so it can run in the background all the time without any worries.   
+
+### Run via Docker
+
+As mentioned above, some switch nodes may be used only as Information Exchange Nodes and deployed on servers with a static IP. In this case, you can run LocalSend Switch using Docker:  
+
+```bash
+# --restart unless-stopped ensures the container automatically restarts
+# after a crash or host reboot
+# --network host allows the container to use the host network stack,
+# ensuring all features work correctly
+docker run -d --name localsend-switch \
+    -e LOCALSEND_SWITCH_SERV_PORT=7761 \
+    -e LOCALSEND_SWITCH_SECRET_KEY=el_psy_kongroo \
+    --restart unless-stopped \
+    --network host \
+    somebottle/localsend-switch:1.0.0
+```
 
 ## Build
 
