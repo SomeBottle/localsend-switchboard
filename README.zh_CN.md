@@ -269,7 +269,7 @@ docker run -d --name localsend-switch \
     # 跨平台构建
     GOOS=linux GOARCH=amd64 go build -o compiled/localsend-switch-linux-amd64
     GOOS=windows GOARCH=amd64 go build -o compiled/localsend-switch-windows-amd64.exe
-    GOOS=darwin GOARCH=amd64 go build -o compiled/localsend-switch-macos-amd64
+    GOOS=darwin GOARCH=amd64 go build -o compiled/localsend-switch-darwin-amd64
     # 使得在 Windows 上启动时没有命令行窗口（静默运行）
     GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o compiled/localsend-switch-windows-amd64-silent.exe
     ```
